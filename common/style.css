@@ -1,0 +1,92 @@
+/* sm-lab 全単元共通スタイル。単元を追加するときはこのファイルを
+   ../common/style.css として読み込むだけで見た目を揃えられる。 */
+
+:root {
+  /* 図（SVG）が黒線・白背景前提で描かれているため、端末のダーク設定に
+     関わらず常にライトテーマで固定する（ダークだと図が見えなくなるため）。 */
+  color-scheme: light only;
+  --border: #ccc;
+  --bg-soft: #f5f5f5;
+}
+body {
+  font-family: "Meiryo", "Yu Gothic", "Noto Sans JP", sans-serif;
+  margin: 0;
+  padding: 0 1rem 3rem;
+  background: #fff;
+  color: #111;
+}
+header { padding: 1rem 0 0.5rem; }
+header p { color: #888; margin: 0.2rem 0 0; font-size: 0.9rem; }
+.home-link { font-size: 0.85rem; }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; }
+}
+section#controls {
+  position: sticky;
+  top: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+.group { margin-top: 1rem; }
+.group h2 { font-size: 0.95rem; margin: 0 0 0.4rem; display: flex; justify-content: space-between; align-items: center; }
+.row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; }
+.row select, .row input[type=number] { flex: 1 1 auto; min-width: 0; }
+.row button.remove { flex: 0 0 auto; }
+label { font-size: 0.85rem; }
+input[type=number] { width: 100%; box-sizing: border-box; }
+#status { margin-top: 0.8rem; font-size: 0.85rem; min-height: 1.2em; }
+#status.error { color: #c0392b; white-space: pre-wrap; }
+#status.busy { color: #888; }
+
+.fig-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem;
+  margin-bottom: 1.2rem;
+}
+.fig-block h2 { font-size: 1rem; margin: 0 0 0.6rem; }
+.fig-wrap {
+  position: relative;
+  display: inline-block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.fig-wrap svg { display: block; }
+.eq-overlay {
+  position: absolute;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+.explanation p { margin: 0.35em 0; line-height: 1.6; }
+.explanation { margin-top: 0.6rem; font-size: 0.92rem; }
+button { cursor: pointer; }
+
+/* トップページ（単元一覧）用 */
+.unit-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  list-style: none;
+}
+.unit-card {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  text-decoration: none;
+  color: inherit;
+}
+.unit-card h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.unit-card p { margin: 0; font-size: 0.85rem; color: #888; }
+.unit-card.disabled { opacity: 0.5; pointer-events: none; }
