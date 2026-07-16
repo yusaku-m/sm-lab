@@ -226,9 +226,18 @@ consoleやNetwork/console.logで確認するとよい）。
    ブラウザのconsoleで `JSON.parse(...)` した中身を見るとよい。
 6. パス関連のエラー（`fetch failed: ...`）が出たら、単元フォルダの深さと`worker.js`内の
    相対パス（`../py/quiz_web/...`）が一致しているか確認する。
+7. **ローカルでは動くのにGitHub Pagesでだけ特定のファイルが404する（特に`__init__.py`のような
+   アンダースコア始まりのファイル）**: GitHub PagesはデフォルトでJekyllビルドを通しており、
+   Jekyllは**アンダースコアで始まるファイル/フォルダをデフォルトで出力から除外する**
+   （`_layouts`等の特殊フォルダ向けの挙動だが、任意のファイル名にも同様に適用される）。
+   リポジトリ直下に `.nojekyll`（空ファイル）を置くとJekyll処理自体を無効化し、リポジトリの
+   中身がそのまま配信されるようになる。2026-07-17、`py/quiz_web/__init__.py`だけが本番で404し、
+   これが原因だった（ローカルの`python -m http.server`はJekyllを介さないため再現しなかった）。
 
-## デプロイ（未実施）
+## デプロイ
 
-GitHub Pages を想定（`main`ブランチ direct配信、ルートの`index.html`がトップページ）。
+`https://github.com/yusaku-m/sm-lab`（Public）へpush済み。GitHub Pagesは`master`ブランチ・
+`/ (root)`で配信（Settings → Pages）。公開URL: `https://yusaku-m.github.io/sm-lab/`。
+リポジトリ直下に`.nojekyll`必須（上記「デバッグの勘所」参照）。
 新規GitHubリポジトリの作成・公開設定は毎回ユーザーに確認してから行う（このリポジトリ自体、
 まだGit管理下に置いていない/pushしていない）。
