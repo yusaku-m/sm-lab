@@ -561,11 +561,11 @@ class Beam():
                 #solution[reaction[0]] をPを含んだ変数に関して因数分解
                 eq = sp.nsimplify(sp.factor(solutions[reaction[0]]))
                 #print(f"eq: {eq}, value: {value}, unit: {unit}, reaction: {reaction}")
-                self._explanation_reaction_forces[-1] += f"　${reaction[0]}$=${sp.latex(eq)}$= {value:.0f} {unit}，"
+                self._explanation_reaction_forces[-1] += f"　${sp.latex(reaction[0])}$=${sp.latex(eq)}$= {value:.0f} {unit}，"
             else:
                 # 不静定などで解けなかった場合
                 new_reaction_forces.append((reaction[0], 0, reaction[2], reaction[0]))
-                self._explanation_reaction_forces[-1] += f"　${reaction[0]}$= 未知（不静定），"
+                self._explanation_reaction_forces[-1] += f"　${sp.latex(reaction[0])}$= 未知（不静定），"
         self._explanation_reaction_forces[-1] = self._explanation_reaction_forces[-1][:-1]
         
         self._reaction_forces = new_reaction_forces
@@ -721,7 +721,7 @@ class Beam():
                 if len(case_type) > 1:
                     self._explanation_reaction_forces.append(f"【重ね合わせ法{i+1}：{base_name}への読み替え】")
 
-                self._explanation_reaction_forces.append(f"この梁を${R1}$および${M1}$を外力として受ける片持ち梁（$x=L$固定）として読み替え，たわみとたわみ角が共に$0$となる条件（適合条件）から解く。")
+                self._explanation_reaction_forces.append(f"この梁を${sp.latex(R1)}$および${sp.latex(M1)}$を外力として受ける片持ち梁（$x=L$固定）として読み替え，たわみとたわみ角が共に$0$となる条件（適合条件）から解く。")
 
                 possible = True
                 total_delta_load = 0
@@ -757,7 +757,7 @@ class Beam():
                 
                 self._explanation_reaction_forces.append(f"境界条件 $\\sum \\delta = 0, \\sum \\theta = 0$ より，")
                 sols = sp.solve([eq1, eq2], [R1, M1])
-                self._explanation_reaction_forces.append(f"　${R1} = {sp.latex(sp.nsimplify(sols[R1]))}, {M1} = {sp.latex(sp.nsimplify(sols[M1]))}$")
+                self._explanation_reaction_forces.append(f"　${sp.latex(R1)} = {sp.latex(sp.nsimplify(sols[R1]))}, {sp.latex(M1)} = {sp.latex(sp.nsimplify(sols[M1]))}$")
                 
                 solutions = sols
                 # 他の反力 R2, M2
@@ -781,7 +781,7 @@ class Beam():
                     self._explanation_reaction_forces.append(f"【重ね合わせ法{i+1}：{base_name}への読み替え】")
 
 
-                self._explanation_reaction_forces.append(f"この梁を${M1}$および${M2}$を外力として受ける単純支持梁（$x=0, L$支持）として読み替え，両端のたわみ角が共に$0$となる条件（適合条件）から解く。")
+                self._explanation_reaction_forces.append(f"この梁を${sp.latex(M1)}$および${sp.latex(M2)}$を外力として受ける単純支持梁（$x=0, L$支持）として読み替え，両端のたわみ角が共に$0$となる条件（適合条件）から解く。")
 
                 possible = True
                 total_theta1_load = 0
@@ -817,7 +817,7 @@ class Beam():
                 
                 self._explanation_reaction_forces.append(f"境界条件 $\\sum \\theta_L = 0, \\sum \\theta_R = 0$ より，")
                 sols = sp.solve([eq1, eq2], [M1, M2])
-                self._explanation_reaction_forces.append(f"　${M1} = {sp.latex(sp.nsimplify(sols[M1]))}, {M2} = {sp.latex(sp.nsimplify(sols[M2]))}$")
+                self._explanation_reaction_forces.append(f"　${sp.latex(M1)} = {sp.latex(sp.nsimplify(sols[M1]))}, {sp.latex(M2)} = {sp.latex(sp.nsimplify(sols[M2]))}$")
                 
                 solutions = sols
                 # 他の反力 R1, R2
@@ -836,7 +836,7 @@ class Beam():
             if len(case_type) > 1:
                 self._explanation_reaction_forces.append(f"【重ね合わせ法{i+1}：{base_name}への読み替え】")
             
-            self._explanation_reaction_forces.append(explanation_title + f"この梁を${R_r_sym}$を外からの作用として受ける{base_name}として読み替え，図のように梁1から梁{beam_num}の重ね合わせとして考える。")
+            self._explanation_reaction_forces.append(explanation_title + f"この梁を${sp.latex(R_r_sym)}$を外からの作用として受ける{base_name}として読み替え，図のように梁1から梁{beam_num}の重ね合わせとして考える。")
             
             possible = True
             total_load_comp = 0
@@ -870,7 +870,7 @@ class Beam():
             self._explanation_reaction_forces.append(f"境界条件 ${' + '.join(sum_eq)} = 0$ より，")
             compatibility_eq = sp.Eq(total_load_comp + delta_unit, 0)
             sol_R = sp.solve(compatibility_eq, R_r_sym)[0]
-            self._explanation_reaction_forces.append(f"　${R_r_sym} = {sp.latex(sp.nsimplify(sol_R))}$")
+            self._explanation_reaction_forces.append(f"　${sp.latex(R_r_sym)} = {sp.latex(sp.nsimplify(sol_R))}$")
             
             # 静的釣り合い式から他の反力を求める
             other_symbols = [s for s in target_symbols if s != R_r_sym]
