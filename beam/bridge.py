@@ -98,22 +98,48 @@ def _build_beam(cfg):
     return BeamMod.Beam(length, supports, actions, section=section, material=material)
 
 
-def compute_beam(config_json):
+def compute_beam(config_json, emit=None):
+    """梁の計算を行い、最終結果のJSON文字列を返す。
+
+    emit: 途中経過を段階的にフロントへ渡すためのJS側コールバック（省略可）。
+    worker.js から `compute_beam(config_json, emit)` の形で呼ばれ、各段階の
+    計算が終わるたびに `emit(json.dumps({"ok": True, "stage": ..., "data": ...}))`
+    を呼ぶ。各段階はBeam.py側のプロパティキャッシュ（self._xxxがNoneなら計算、
+    そうでなければキャッシュを返す）に乗っかっているだけなので、最後にもう一度
+    全プロパティへアクセスしても再計算は発生しない。
+    """
     try:
         cfg = json.loads(config_json)
         beam = _build_beam(cfg)
 
-        result = {
-            "figure": _figure_payload(beam.figure),
+        def _emit(stage, data):
+            if emit is not None:
+                emit(json.dumps({"ok": True, "stage": stage, "data": data}))
+
+        figure_data = {"figure": _figure_payload(beam.figure)}
+        _emit("figure", figure_data)
+
+        reactions_data = {
             "reaction_forces": _to_jsonable(beam.reaction_forces),
             "explanation_reaction_forces": beam.explanation_reaction_forces,
             "figure_reaction_forces": _figure_payload(beam.figure_reaction_forces),
+        }
+        _emit("reactions", reactions_data)
+
+        sfd_data = {
             "shear_force_diagram": _figure_payload(beam.shear_force_diagram),
+            "maximum_shear_force": _to_jsonable(beam.maximum_shear_force),
+        }
+        _emit("sfd", sfd_data)
+
+        bmd_data = {
             "bending_moment_diagram": _figure_payload(beam.bending_moment_diagram),
             "explanation_sectional_forces": beam.explanation_sectional_forces,
-            "maximum_shear_force": _to_jsonable(beam.maximum_shear_force),
             "maximum_bending_moment": _to_jsonable(beam.maximum_bending_moment),
         }
+        _emit("bmd", bmd_data)
+
+        result = {**figure_data, **reactions_data, **sfd_data, **bmd_data}
         return json.dumps({"ok": True, "result": result})
     except Exception as e:  # noqa: BLE001 -- ワーカー越しにフロントへ伝える
         return json.dumps({

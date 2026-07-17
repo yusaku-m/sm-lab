@@ -40,11 +40,13 @@ worker.onmessage = (e) => {
     scheduleCompute(0);
   } else if (data.type === "init_error") {
     setStatus("初期化に失敗しました: " + data.message, true);
+  } else if (data.type === "partial") {
+    if (data.id !== latestRequestId) return; // 古いリクエストの結果は無視
+    if (data.ok) renderStage(data.stage, data.data);
   } else if (data.type === "result") {
     if (data.id !== latestRequestId) return; // 古いリクエストの結果は無視
     if (data.ok) {
-      setStatus("", false);
-      renderResult(data.result);
+      setStatus("", false); // 各段階の表示は partial で既に終わっているのでステータス解除のみ
     } else {
       setStatus("計算エラー: " + data.message, true);
     }
@@ -375,19 +377,24 @@ function appendMaxPair(containerId, label, pair, unit) {
   }
 }
 
-function renderResult(result) {
-  renderFigure("fig-beam", result.figure);
-  renderFigure("fig-reactions", result.figure_reaction_forces);
-  renderFigure("fig-sfd", result.shear_force_diagram);
-  renderFigure("fig-bmd", result.bending_moment_diagram);
-
-  renderExplanation("exp-reactions", result.explanation_reaction_forces);
-  renderExplanation("exp-sectional", result.explanation_sectional_forces);
-  appendMaxPair("exp-sectional", "最大曲げモーメント", result.maximum_bending_moment, "N·m");
-
-  const shearEl = document.getElementById("exp-max-shear");
-  shearEl.innerHTML = "";
-  appendMaxPair("exp-max-shear", "最大せん断力", result.maximum_shear_force, "N");
+// 段階（figure/reactions/sfd/bmd）ごとに、終わったものから順に描画する。
+function renderStage(stage, data) {
+  if (stage === "figure") {
+    renderFigure("fig-beam", data.figure);
+    renderFigure("fig-beam-preview", data.figure); // 「梁の定義」パネル内のプレビュー
+  } else if (stage === "reactions") {
+    renderFigure("fig-reactions", data.figure_reaction_forces);
+    renderExplanation("exp-reactions", data.explanation_reaction_forces);
+  } else if (stage === "sfd") {
+    renderFigure("fig-sfd", data.shear_force_diagram);
+    const shearEl = document.getElementById("exp-max-shear");
+    shearEl.innerHTML = "";
+    appendMaxPair("exp-max-shear", "最大せん断力", data.maximum_shear_force, "N");
+  } else if (stage === "bmd") {
+    renderFigure("fig-bmd", data.bending_moment_diagram);
+    renderExplanation("exp-sectional", data.explanation_sectional_forces);
+    appendMaxPair("exp-sectional", "最大曲げモーメント", data.maximum_bending_moment, "N·m");
+  }
 }
 
 // ---------------------------------------------------------------- 折りたたみ

@@ -116,6 +116,11 @@ input[type=number] { width: 100%; box-sizing: border-box; }
     zoom: 1.2;
   }
 }
+.fig-wrap.fig-wrap-preview {
+  display: block;
+  zoom: 1;
+  margin: 8px 24px;
+}
 .fig-wrap svg { display: block; }
 .eq-overlay {
   position: absolute;

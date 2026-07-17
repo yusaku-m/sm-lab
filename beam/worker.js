@@ -65,7 +65,19 @@ self.onmessage = async (event) => {
   try {
     const pyodide = await pyodideReadyPromise;
     pyodide.globals.set("_config_json", JSON.stringify(config));
-    const resultJson = pyodide.runPython("compute_beam(_config_json)");
+    // 各計算段階（figure/reactions/sfd/bmd）が終わるたびにBeam.py側から呼ばれ、
+    // その場でメインスレッドへ部分結果を流す（終わった順に画面へ反映するため）。
+    pyodide.globals.set("_emit", (stageJson) => {
+      let payload;
+      try {
+        payload = JSON.parse(stageJson);
+      } catch (e) {
+        return;
+      }
+      self.postMessage({ type: "partial", id, ...payload });
+    });
+    const resultJson = pyodide.runPython("compute_beam(_config_json, _emit)");
+    pyodide.globals.delete("_emit");
     const payload = JSON.parse(resultJson);
     self.postMessage({ type: "result", id, ...payload });
   } catch (err) {

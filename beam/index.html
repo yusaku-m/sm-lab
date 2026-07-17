@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>梁の学習プレイグラウンド</title>
+<title>梁の曲げ変形シミュレータ</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <link rel="stylesheet" href="../common/style.css">
 </head>
 <body>
 <header>
   <p class="home-link"><a href="../index.html">← sm-lab トップへ</a></p>
-  <h1>梁の学習プレイグラウンド</h1>
+  <h1>梁の曲げ変形シミュレータ</h1>
   <p>支点・荷重を自由に配置すると、反力・せん断力図・曲げモーメント図がその場で再計算されます（材料力学Ⅰ・Ⅱの授業で使っている計算エンジンをそのままブラウザで動かしています）。</p>
 </header>
 <main>
@@ -19,6 +19,7 @@
       <h2>梁の定義</h2>
       <button id="toggle-controls" type="button" aria-expanded="true">折りたたむ ▲</button>
     </div>
+    <div class="fig-wrap fig-wrap-preview" id="fig-beam-preview"></div>
     <div class="controls-body" id="controls-body">
       <div class="field">
         <label>梁の長さ L (mm)
