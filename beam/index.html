@@ -15,23 +15,29 @@
 </header>
 <main>
   <section id="controls">
-    <div class="field">
-      <label>梁の長さ L (mm)
-        <input id="length" type="number" min="100" step="10" value="1000">
-      </label>
+    <div class="controls-header">
+      <h2>梁の定義</h2>
+      <button id="toggle-controls" type="button" aria-expanded="true">折りたたむ ▲</button>
     </div>
+    <div class="controls-body" id="controls-body">
+      <div class="field">
+        <label>梁の長さ L (mm)
+          <input id="length" type="number" min="100" step="10" value="1000">
+        </label>
+      </div>
 
-    <div class="group">
-      <h2>支点 <button id="add-support" type="button">+ 追加</button></h2>
-      <div id="supports-list"></div>
+      <div class="group">
+        <h2>支点 <button id="add-support" type="button">+ 追加</button></h2>
+        <div id="supports-list"></div>
+      </div>
+
+      <div class="group">
+        <h2>荷重 <button id="add-load" type="button">+ 追加</button></h2>
+        <div id="loads-list"></div>
+      </div>
+
+      <div id="status"></div>
     </div>
-
-    <div class="group">
-      <h2>荷重 <button id="add-load" type="button">+ 追加</button></h2>
-      <div id="loads-list"></div>
-    </div>
-
-    <div id="status"></div>
   </section>
 
   <section id="outputs">

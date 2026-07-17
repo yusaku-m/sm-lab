@@ -360,6 +360,15 @@ function renderResult(result) {
   appendMaxPair("exp-max-shear", "最大せん断力", result.maximum_shear_force, "N");
 }
 
+// ---------------------------------------------------------------- 折りたたみ
+const controlsSection = document.getElementById("controls");
+const toggleControlsBtn = document.getElementById("toggle-controls");
+toggleControlsBtn.addEventListener("click", () => {
+  const collapsed = controlsSection.classList.toggle("collapsed");
+  toggleControlsBtn.textContent = collapsed ? "展開する ▼" : "折りたたむ ▲";
+  toggleControlsBtn.setAttribute("aria-expanded", String(!collapsed));
+});
+
 // ---------------------------------------------------------------- 初期化
 renderSupportsList();
 renderLoadsList();

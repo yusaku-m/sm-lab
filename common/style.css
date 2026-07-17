@@ -37,6 +37,33 @@ section#controls {
   padding: 0.8rem;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   z-index: 10;
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
+}
+.controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.controls-header h2 { font-size: 0.95rem; margin: 0; }
+#toggle-controls {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+}
+.controls-body {
+  margin-top: 0.6rem;
+}
+section#controls.collapsed .controls-body {
+  display: none;
+}
+section#controls.collapsed {
+  max-height: none;
+  overflow: visible;
 }
 .group { margin-top: 1rem; }
 .group h2 { font-size: 0.95rem; margin: 0 0 0.4rem; display: flex; justify-content: space-between; align-items: center; }
