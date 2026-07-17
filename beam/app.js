@@ -115,6 +115,9 @@ function renderSupportsList() {
   const container = document.getElementById("supports-list");
   container.innerHTML = "";
   supports.forEach((s) => {
+    const item = document.createElement("div");
+    item.className = "support-item";
+
     const row = document.createElement("div");
     row.className = "row";
 
@@ -128,20 +131,42 @@ function renderSupportsList() {
     });
     typeSelect.addEventListener("change", () => {
       s.type = typeSelect.value;
+      if (s.type === "fixed") {
+        // 固定支点はBeam.py側の計算ロジック上、端部（x=0 or x=L）にしか置けない
+        s.position = Number(s.position) >= 0.5 ? 1 : 0;
+      }
+      renderSupportsList();
       scheduleCompute();
     });
 
-    const posInput = document.createElement("input");
-    posInput.type = "number";
-    posInput.min = "0";
-    posInput.max = "1";
-    posInput.step = "0.01";
-    posInput.value = s.position;
-    posInput.title = "位置（0=左端 〜 1=右端）";
-    posInput.addEventListener("input", () => {
-      s.position = posInput.value;
-      scheduleCompute();
-    });
+    let posControl;
+    if (s.type === "fixed") {
+      posControl = document.createElement("select");
+      [[0, "左端 (0)"], [1, "右端 (1)"]].forEach(([val, label]) => {
+        const opt = document.createElement("option");
+        opt.value = String(val);
+        opt.textContent = label;
+        if (Number(s.position) === val) opt.selected = true;
+        posControl.appendChild(opt);
+      });
+      posControl.title = "固定支点は端部のみ配置できます";
+      posControl.addEventListener("change", () => {
+        s.position = Number(posControl.value);
+        scheduleCompute();
+      });
+    } else {
+      posControl = document.createElement("input");
+      posControl.type = "number";
+      posControl.min = "0";
+      posControl.max = "1";
+      posControl.step = "0.01";
+      posControl.value = s.position;
+      posControl.title = "位置（0=左端 〜 1=右端）";
+      posControl.addEventListener("input", () => {
+        s.position = posControl.value;
+        scheduleCompute();
+      });
+    }
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
@@ -154,9 +179,10 @@ function renderSupportsList() {
     });
 
     row.appendChild(typeSelect);
-    row.appendChild(posInput);
+    row.appendChild(posControl);
     row.appendChild(removeBtn);
-    container.appendChild(row);
+    item.appendChild(row);
+    container.appendChild(item);
   });
 }
 
@@ -171,6 +197,9 @@ function renderLoadsList() {
   const container = document.getElementById("loads-list");
   container.innerHTML = "";
   loads.forEach((l) => {
+    const item = document.createElement("div");
+    item.className = "load-item";
+
     const row = document.createElement("div");
     row.className = "row";
 
@@ -195,7 +224,7 @@ function renderLoadsList() {
       scheduleCompute();
     });
     row.appendChild(typeSelect);
-    container.appendChild(row);
+    item.appendChild(row);
 
     const fieldsRow = document.createElement("div");
     fieldsRow.className = "row";
@@ -277,7 +306,8 @@ function renderLoadsList() {
     });
     fieldsRow.appendChild(removeBtn);
 
-    container.appendChild(fieldsRow);
+    item.appendChild(fieldsRow);
+    container.appendChild(item);
   });
 }
 

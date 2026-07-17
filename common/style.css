@@ -21,7 +21,7 @@ header p { color: #888; margin: 0.2rem 0 0; font-size: 0.9rem; }
 
 main {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: minmax(300px, 420px) 1fr;
   gap: 1.5rem;
   align-items: start;
 }
@@ -42,9 +42,9 @@ section#controls {
 }
 .controls-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 .controls-header h2 { font-size: 0.95rem; margin: 0; }
 #toggle-controls {
@@ -67,7 +67,24 @@ section#controls.collapsed {
 }
 .group { margin-top: 1rem; }
 .group h2 { font-size: 0.95rem; margin: 0 0 0.4rem; display: flex; justify-content: space-between; align-items: center; }
+#supports-list, #loads-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.support-item, .load-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem;
+  min-width: 0;
+}
+@media (max-width: 500px) {
+  #supports-list, #loads-list {
+    grid-template-columns: 1fr;
+  }
+}
 .row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; }
+.row:last-child { margin-bottom: 0; }
 .row select, .row input[type=number] { flex: 1 1 auto; min-width: 0; }
 .row button.remove { flex: 0 0 auto; }
 label { font-size: 0.85rem; }
