@@ -526,14 +526,14 @@ class Beam():
     def _add_equilibrium_explanation(self, force_equation, moment_equations_info):
         """釣り合い式の解説を追加する"""
         self._explanation_reaction_forces.append(f"上向きの力を正として力の釣り合いを考えると，")
-        self._explanation_reaction_forces.append(f"　${sp.nsimplify(force_equation)}$=$0$")
+        self._explanation_reaction_forces.append(f"　${sp.latex(sp.nsimplify(force_equation))}$=$0$")
 
         for i, (point_name, eq) in enumerate(moment_equations_info):
             if i == 0:
                 self._explanation_reaction_forces.append(f"続いて，{point_name}を中心として，反時計回りを正とするモーメントの釣り合いを考えると，")
             else:
                 self._explanation_reaction_forces.append(f"また，{point_name}を中心とした場合は，")
-            self._explanation_reaction_forces.append(f"　${sp.nsimplify(eq)}$=$0$")
+            self._explanation_reaction_forces.append(f"　${sp.latex(sp.nsimplify(eq))}$=$0$")
 
         self._explanation_reaction_forces.append(f"モーメントのつり合いの式は，上記の例を含め，いかなる点を中心としてもよい。")
 
@@ -561,7 +561,7 @@ class Beam():
                 #solution[reaction[0]] をPを含んだ変数に関して因数分解
                 eq = sp.nsimplify(sp.factor(solutions[reaction[0]]))
                 #print(f"eq: {eq}, value: {value}, unit: {unit}, reaction: {reaction}")
-                self._explanation_reaction_forces[-1] += f"　${reaction[0]}$=${eq}$= {value:.0f} {unit}，"
+                self._explanation_reaction_forces[-1] += f"　${reaction[0]}$=${sp.latex(eq)}$= {value:.0f} {unit}，"
             else:
                 # 不静定などで解けなかった場合
                 new_reaction_forces.append((reaction[0], 0, reaction[2], reaction[0]))
@@ -1575,7 +1575,7 @@ class Beam():
 
             L = sp.symbols("L")
             self._explanation_sectional_forces.append("")
-            self._explanation_sectional_forces.append(f"==== ${sp.nsimplify(left_side*L)}$<$x$<${sp.nsimplify(division_point*L)}$の区間に仮想断面を取った場合 ====")
+            self._explanation_sectional_forces.append(f"==== ${sp.latex(sp.nsimplify(left_side*L))}$<$x$<${sp.latex(sp.nsimplify(division_point*L))}$の区間に仮想断面を取った場合 ====")
 
 
             for side, s, e in zip(["左側", "右側"], [0, mid_point], [mid_point, 1]):
@@ -1587,10 +1587,10 @@ class Beam():
         
                 self._explanation_sectional_forces.append(f"力のつり合いから，")
                 force_balance = self.generate_force_balance_equation(s, e)
-                self._explanation_sectional_forces.append(f"　${sp.nsimplify(force_balance)}$=$0$")
+                self._explanation_sectional_forces.append(f"　${sp.latex(sp.nsimplify(force_balance))}$=$0$")
                 moment_balance = self.generate_moment_balance_equation(s, e, sp.symbols("x"))
                 self._explanation_sectional_forces.append(f"また，モーメントのつりあいから，")
-                self._explanation_sectional_forces.append(f"　${sp.nsimplify(moment_balance)}$=$0$")
+                self._explanation_sectional_forces.append(f"　${sp.latex(sp.nsimplify(moment_balance))}$=$0$")
 
                 # 力の釣合い式とモーメントの釣合い式を解く
                 V, M = sp.symbols("V M")
@@ -1601,8 +1601,8 @@ class Beam():
                 dict_reaction_forces = {r[0]: r[3] for r in self._reaction_forces}
                 actV = sp.nsimplify(sp.simplify(solutions[V].subs(dict_reaction_forces)))
                 actM = sp.nsimplify(sp.simplify(solutions[M].subs(dict_reaction_forces)))
-                self._explanation_sectional_forces.append(f"　$V$=${sp.nsimplify(sp.simplify(solutions[V]))}$=${actV}$")
-                self._explanation_sectional_forces.append(f"　$M$=${sp.nsimplify(sp.simplify(solutions[M]))}$=${actM}$")
+                self._explanation_sectional_forces.append(f"　$V$=${sp.latex(sp.nsimplify(sp.simplify(solutions[V])))}$=${sp.latex(actV)}$")
+                self._explanation_sectional_forces.append(f"　$M$=${sp.latex(sp.nsimplify(sp.simplify(solutions[M])))}$=${sp.latex(actM)}$")
 
                 if side == "左側":
                     self._shear_force.append(((left_side, division_point), actV))

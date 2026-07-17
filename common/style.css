@@ -31,9 +31,12 @@ main {
 section#controls {
   position: sticky;
   top: 0.5rem;
+  background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.8rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  z-index: 10;
 }
 .group { margin-top: 1rem; }
 .group h2 { font-size: 0.95rem; margin: 0 0 0.4rem; display: flex; justify-content: space-between; align-items: center; }
@@ -51,13 +54,23 @@ input[type=number] { width: 100%; box-sizing: border-box; }
   border-radius: 8px;
   padding: 0.8rem;
   margin-bottom: 1.2rem;
+  overflow: visible;
 }
 .fig-block h2 { font-size: 1rem; margin: 0 0 0.6rem; }
 .fig-wrap {
   position: relative;
   display: inline-block;
-  overflow-x: auto;
+  overflow: visible;
   max-width: 100%;
+  padding: 8px;
+  margin: 8px 40px;
+  zoom: 1.6;
+}
+@media (max-width: 600px) {
+  .fig-wrap {
+    margin: 8px 24px;
+    zoom: 1.2;
+  }
 }
 .fig-wrap svg { display: block; }
 .eq-overlay {

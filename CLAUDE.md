@@ -19,6 +19,17 @@
 **vendoring している元ファイル**（`py/quiz_web/` 配下、`Grading/packages/quiz/` から）:
 `Beam.py`, `BeamLibrary.py`, `Action.py`, `Material.py`, `SafetyFactor.py`, `CrossSection.py`
 は **無改造でコピー**（`CrossSection.py` のみ冒頭の未使用 `import matplotlib.pyplot as plt` を削除）。
+
+**例外（sm-lab側のみのローカルパッチ、Grading側には無い変更）**: `Beam.py` の
+`_add_equilibrium_explanation`・`_add_reaction_results_explanation`（反力の解説）と
+断面力V/M計算ループ（断面力の解説、`explanation_sectional_forces`）内の計7箇所で、
+sympy式を `sp.latex()` でラップせず素のf-stringに埋め込んでいたバグ（`str()`が使われ
+数式が`PL/4`や`L*P`のような一行・`*`表記になり、ブラウザのKaTeXで正しいTeX表示
+（$\frac{}{}$・$\cdot$）にならなかった）を2026-07-17に修正済み（同ファイル内の他の
+正しい箇所と同じ`sp.latex(sp.nsimplify(...))`パターンに揃えた）。
+**Gradingから`Beam.py`を`cp`し直して再同期する際は、この7箇所の修正が上書きで
+失われるため、修正前後の差分を見比べて再適用すること**（あるいはGrading側の
+`Beam.py`にも同じ修正を先に取り込んでおくとよい）。
 `Figure.py` だけは**別実装**（後述）。今後 引張圧縮・ねじり用に `Rod.py` 等を追加するときも同じ方針
 （無改造コピー、必要なら未使用import等の削除のみ）で `py/quiz_web/` に足していく。
 
