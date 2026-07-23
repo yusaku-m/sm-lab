@@ -254,6 +254,16 @@ consoleやNetwork/console.logで確認するとよい）。
    リポジトリ直下に `.nojekyll`（空ファイル）を置くとJekyll処理自体を無効化し、リポジトリの
    中身がそのまま配信されるようになる。2026-07-17、`py/quiz_web/__init__.py`だけが本番で404し、
    これが原因だった（ローカルの`python -m http.server`はJekyllを介さないため再現しなかった）。
+8. **解説文中の分数（`\frac{}{}`）が潰れて/小さく詰まって表示される**: KaTeXは
+   `displayMode: false`（インライン）で描画すると`\frac`を省スペースの`textstyle`で描くため、
+   分子・分母が小さくなる。地の文（日本語の解説文）に埋め込む都合上インライン自体は必須なので、
+   `displayMode`を変えるのではなく**描画直前に`\frac{`→`\dfrac{`へ文字列置換**して分数だけ
+   displaystyle相当の大きさにする（`beam/app.js`の`useDisplayFrac()`）。`Beam.py`/`Figure.py`が
+   生成するsympy由来のLaTeX文字列自体は無改造方針なので変更しない。2026-07-23に対応。
+   `renderFigure`（図の数式オーバーレイ）・`renderExplanation`（解説文）・`appendMaxPair`
+   （最大せん断力/曲げモーメント）の3箇所すべてで通す必要がある（1箇所でも忘れると
+   そこだけ潰れたままになる）。他の単元を追加する際も同じ`useDisplayFrac`を流用できる
+   （`common/`にJSを切り出すタイミングが来たらそこに含める）。
 
 ## デプロイ
 

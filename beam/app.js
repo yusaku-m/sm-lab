@@ -322,6 +322,13 @@ document.getElementById("add-load").addEventListener("click", () => {
 document.getElementById("length").addEventListener("input", () => scheduleCompute());
 
 // ---------------------------------------------------------------- 結果表示
+// KaTeXはインライン（displayMode:false）だと \frac をtextstyleで小さく詰めて描画し、
+// 分子・分母が潰れて見える。地の文はインラインのまま、分数だけ displaystyle 相当の
+// \dfrac に置き換えて読みやすくする。
+function useDisplayFrac(latex) {
+  return latex.replace(/\\frac(?=\{)/g, "\\dfrac");
+}
+
 function renderFigure(containerId, figData) {
   const el = document.getElementById(containerId);
   el.innerHTML = "";
@@ -336,7 +343,7 @@ function renderFigure(containerId, figData) {
     const ty = eq.valign === "center" ? -50 : eq.valign === "bottom" ? -100 : 0;
     span.style.transform = `translate(${tx}%, ${ty}%)`;
     try {
-      katex.render(eq.latex, span, { throwOnError: false });
+      katex.render(useDisplayFrac(eq.latex), span, { throwOnError: false });
     } catch (err) {
       span.textContent = eq.latex;
     }
@@ -349,7 +356,7 @@ function renderExplanation(containerId, lines) {
   el.innerHTML = "";
   (lines || []).forEach((line) => {
     const p = document.createElement("p");
-    p.textContent = line;
+    p.textContent = useDisplayFrac(line);
     el.appendChild(p);
   });
   if (window.renderMathInElement) {
@@ -371,7 +378,7 @@ function appendMaxPair(containerId, label, pair, unit) {
   el.appendChild(p);
   const target = p.querySelector(".katex-target");
   try {
-    katex.render(exprLatex, target, { throwOnError: false });
+    katex.render(useDisplayFrac(exprLatex), target, { throwOnError: false });
   } catch (e) {
     target.textContent = exprLatex;
   }
