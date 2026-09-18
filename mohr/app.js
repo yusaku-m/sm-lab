@@ -396,14 +396,18 @@ $('reset-view').addEventListener('click', () => rod && rod.resetView());
 // 将来 x 方向に変化する応力を入れても壊れないよう、素朴に走査して選ぶ（数万回程度で一瞬）。
 function maxCirclePoint() {
   const sec = sectionProps(state.geom.d);
-  let best = { v: -Infinity, r: sec.R, a: 0 };
+  let best = { v: -Infinity, s1: -Infinity, r: sec.R, a: 0 };
   for (let i = 0; i <= 24; i++) {
     const r = (i / 24) * sec.R;
     for (let j = 0; j < 360; j++) {
       const a = (j / 360) * Math.PI * 2;
       const an = analyze(stressAt(state.loads, sec, r, a, 0));
       const v = an.s1 - an.s3;
-      if (v > best.v + 1e-9) best = { v, r, a };
+      // 同じ大きさの円になる点が複数あるとき（純曲げの上下など）は引張側を選ぶ。
+      // 単に先に見つかったほうを採ると圧縮側に着地してしまう。
+      if (v > best.v + 1e-9 || (v > best.v - 1e-9 && an.s1 > best.s1 + 1e-9)) {
+        best = { v, s1: an.s1, r, a };
+      }
     }
   }
   return best;
