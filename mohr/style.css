@@ -1,0 +1,316 @@
+/* mohr/ 単元専用テーマ。
+   他の単元（beam/ 等）は common/style.css を使っており、こちらはそれとは
+   独立した自己完結スタイル（common/style.css は読み込まない）。
+   図（SVG/WebGL）が明色背景前提のため、common/style.css と同様に
+   ダークモードへは追従しない。 */
+
+:root {
+  color-scheme: light only;
+  --ink: #1d2932;
+  --muted: #627078;
+  --paper: #fffdf7;
+  --line: #1d293226;
+  --line-solid: #ddd7ca;
+  --accent: #ef6a4b;
+  --accent-strong: #bd442c;
+  --accent-soft: #ffac92;
+  --blue: #245b8d;
+  --blue-soft: #7aa8ce;
+  --green: #2f8f6f;
+  --display-font: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --body-font: Inter, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  --mono-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background:
+    radial-gradient(circle at 14% 22%, #ef6a4b1a, #0000 26%),
+    linear-gradient(135deg, #f9f6ee 0%, #f1eee5 100%);
+  background-attachment: fixed;
+  min-width: 320px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 0 clamp(12px, 3vw, 32px) 64px;
+  font-family: var(--body-font);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+::selection { color: var(--paper); background: var(--accent-strong); }
+
+/* ---------- header ---------- */
+.site-head {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px 4px 20px;
+}
+.home-link {
+  display: inline-block;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.home-link:hover { color: var(--accent-strong); }
+.site-head h1 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+.site-head .lede {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  max-width: 62ch;
+  margin: 10px 0 0;
+}
+
+/* ---------- layout ---------- */
+.lab {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: grid;
+  gap: clamp(14px, 1.6vw, 22px);
+  align-items: start;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+  grid-template-areas:
+    "rod   mohr"
+    "ctrl  mohr"
+    "notes notes";
+}
+.rod-card { grid-area: rod; }
+.controls-card { grid-area: ctrl; }
+.mohr-card { grid-area: mohr; }
+.notes-card { grid-area: notes; }
+
+/* スマホ: モールの応力円を上、丸棒を下（親指で棒を触っても円が隠れない） */
+@media (max-width: 920px) {
+  .lab {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "mohr" "rod" "ctrl" "notes";
+  }
+}
+
+/* ---------- card ---------- */
+.card {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: clamp(16px, 2vw, 24px);
+  padding: clamp(16px, 2.2vw, 26px);
+  box-shadow: 0 24px 70px #1c242c14;
+  min-width: 0;
+}
+.kicker {
+  color: var(--accent-strong);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.card h2 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 1.22rem;
+  margin: 0 0 4px;
+}
+.card .sub {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  margin: 0 0 14px;
+}
+
+/* ---------- toolbar / form controls ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.toolbar label { font-size: 0.8rem; color: var(--muted); }
+select, .btn {
+  border: 1px solid var(--line-solid);
+  background: #fffefa;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+select:hover, .btn:hover { border-color: var(--accent-soft); }
+.btn { cursor: pointer; }
+.btn:active { background: #f6f1e7; }
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+}
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.swatch { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---------- 3D viewport ---------- */
+.viewport {
+  position: relative;
+  width: 100%;
+  height: clamp(300px, 40vh, 440px);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #fbf8f1 0%, #efe9dc 100%);
+  border: 1px solid var(--line);
+  touch-action: none;
+  cursor: crosshair;
+}
+.viewport canvas { display: block; width: 100%; height: 100%; }
+.viewport .hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  background: #fffdf7cc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 9px;
+  pointer-events: none;
+  line-height: 1.55;
+}
+
+/* ---------- colorbar ---------- */
+.colorbar { margin-top: 12px; }
+.colorbar .bar {
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.colorbar .ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.colorbar .cb-title { font-size: 0.74rem; color: var(--muted); margin-bottom: 6px; }
+
+/* ---------- probe readout ---------- */
+.probe {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px dashed var(--line-solid);
+  border-radius: 12px;
+  background: #fdfaf2;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.probe b { color: var(--ink); font-weight: 600; }
+.probe .val { font-variant-numeric: tabular-nums; }
+
+/* ---------- sliders ---------- */
+.field-row { display: grid; gap: 5px; margin-bottom: 15px; }
+.field-row:last-child { margin-bottom: 0; }
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.field-head .name { font-size: 0.83rem; }
+.field-head .name em {
+  font-family: var(--display-font);
+  font-style: italic;
+  font-size: 1.02rem;
+  margin-right: 4px;
+}
+.field-head .unit { color: var(--muted); font-size: 0.74rem; }
+.field-inputs { display: flex; align-items: center; gap: 10px; }
+.field-inputs input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+  height: 22px;
+}
+.field-inputs input[type="number"] {
+  flex: 0 0 5.6rem;
+  border: 1px solid var(--line-solid);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 5px 8px;
+  font-size: 0.82rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.field-inputs input[type="number"]:focus {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+.divider { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+
+/* ---------- mohr plot ---------- */
+.plot { width: 100%; }
+.plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.element-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 232px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin-top: 14px;
+}
+.element-wrap .plot { max-width: 250px; margin: 0 auto; }
+@media (max-width: 520px) {
+  .element-wrap { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- stress table ---------- */
+.stress-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 6px;
+}
+.stress-table th, .stress-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.stress-table th { text-align: left; font-weight: 500; color: var(--muted); }
+.stress-table tr:last-child td, .stress-table tr:last-child th { border-bottom: 0; }
+.stress-table td .u { color: var(--muted); font-size: 0.72rem; margin-left: 2px; }
+
+/* ---------- notes ---------- */
+.notes-card .formula {
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: #fbf7ee;
+  border: 1px solid var(--line);
+  overflow-x: auto;
+}
+.notes-card .formula:last-of-type { margin-bottom: 0; }
+.notes-card .formula .cap { font-size: 0.74rem; color: var(--muted); margin-bottom: 7px; }
+.notes-card p { font-size: 0.82rem; line-height: 1.8; color: var(--muted); }
+.katex { font-size: 1em; }
+
+.err {
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  margin-top: 10px;
+  white-space: pre-wrap;
+}

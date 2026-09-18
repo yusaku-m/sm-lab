@@ -76,6 +76,13 @@ beam/               # 「梁」単元（Phase 1 実装済み）
   app.js             # 支点・荷重の自由配置エディタ、Workerとの通信、SVG+KaTeXオーバーレイ描画
   worker.js          # Web Worker。Pyodide起動、../py/quiz_webを仮想FSへ展開、bridge.py実行
   bridge.py          # Worker内Pythonのエントリポイント。compute_beam(json)->json（梁専用）
+mohr/               # 「モールの応力円」単元（下記の通り beam/ とは構成が違う。Pyodideを使わない）
+  index.html         # importmapでthree.js、CDNでKaTeX。style.css（この単元専用）を読む
+  style.css          # mohr/専用テーマ。common/style.cssは読まない
+  stress.js          # 応力の計算（純粋関数のみ、DOM非依存）
+  rod3d.js           # three.jsのシーン（丸棒のコンター・荷重グリフ・ドラッグ・点の拾い上げ）
+  mohr2d.js          # モールの応力円と応力要素のSVG描画
+  app.js             # 状態と配線
 ```
 
 **今後 単元を追加するとき**（引張圧縮=`axial/`、ねじり=`torsion/`、モールの応力円=`mohr/` 等）:
@@ -87,6 +94,10 @@ beam/               # 「梁」単元（Phase 1 実装済み）
 - **JS側の共通処理**（Pyodideのworker起動・KaTeXオーバーレイ描画・デバウンス）が2単元目以降で
   重複してきたら、そこで初めて`common/`にJSとして切り出す（1単元目の現時点ではまだ切り出して
   いない — 早すぎる抽象化を避けるため）
+- **ただし`mohr/`はこの型に当てはまらない**（Pyodideも`common/style.css`も使っていない）。
+  リアルタイムに動かす可視化中心の単元を足すときは`beam/`ではなく`mohr/`を雛形にするとよい。
+  判断基準は「sympyの記号計算が要るか」「1操作ごとに再計算すれば足りるか（beam型）、それとも
+  ドラッグ中に毎フレーム塗り直すか（mohr型）」。詳細は下記`mohr/`の節。
 
 ### `worker.js`（各単元フォルダ内）
 
@@ -161,6 +172,86 @@ PDF埋め込み専用の重い経路を持つが、これは **SVG生成その�
 `traceback.format_exc()` で `result.traceback` に入っているので、デバッグ時はJSON全体をブラウザの
 consoleやNetwork/console.logで確認するとよい）。
 
+### `mohr/`（モールの応力円。2026-09-18 実装、beam/ とは別構成）
+
+**この単元だけ Pyodide を使わない**（`worker.js`/`bridge.py` が無く、`py/quiz_web/` も参照しない）。
+理由: 丸棒に「軸力 N ＋ 両端の曲げモーメント M ＋ ねじりモーメント T」を与えたときの応力は
+閉じた式で書けて sympy が要らない一方、UI 側の要件が「荷重の矢印を掴んでドラッグしながら
+コンターを塗り直す」「1万点超の頂点カラーを毎フレーム更新する」なので、Worker 越しの記号計算
+（`beam/` は 400ms デバウンス）では成立しないため。計算は全部素の JS（`stress.js`）に閉じている。
+
+**この単元だけ `common/style.css` も読まない**。参照サイト
+（<https://d-kitamura.github.io/linear-algebra-visual-lab/>）風のテーマ
+（地 `#f4f1e9` / 紙 `#fffdf7` / インク `#1d2932` / アクセント `#ef6a4b`、Georgia 系の見出し、
+角丸の大きなカード）を `mohr/style.css` に自己完結で書いてある。`beam/` の見た目・座標系には
+一切影響しない（2026-09-18、ユーザーと相談のうえ「mohr/ だけに新テーマ」で決定）。
+ダークモード非対応（`color-scheme: light only`）の方針は `common/style.css` と同じ。
+
+#### 力学モデル（`stress.js`）
+
+座標系は円筒座標で x=軸方向、θ=周方向、r=半径方向。断面内の点は `(r, a)` で表し
+`y = r cos a`（a は曲げの引張側 +y から測った角度）。単位は N を kN、M/T を N·m、
+寸法を mm で受け取り、応力は MPa で返す。
+
+```
+A = πd²/4,  I = πd⁴/64,  Ip = πd⁴/32
+σx  = N/A + M·y/I
+τxθ = T·r/Ip
+σθ = σr = τxr = τθr = 0      ← 内圧などが無いので恒等的に 0
+```
+
+`τxr = τθr = 0` なので **r 方向がそのまま主方向**であり、x–θ / θ–r / r–x の 3 つの座標面が
+そのまま 3 つのモールの円になる（`mohr2d.js` の `PLANES`、チェックボックスで表示切替。
+θ–r 面は常に原点の 1 点に潰れるが、それも「一軸応力＋せん断」の理解につながるので出している）。
+
+コンターの選択肢に `σθ`・`σr`（常に 0）を残しつつ `τxθ`・`τmax`・`σeq`（von Mises）・`σ1` も
+足してあるのは、σθ/σr だけでは全部真っ白になって単元として成立しないため
+（2026-09-18、ユーザーの「コンターはせん断応力に対応せねば」という指摘を受けて追加）。
+
+コンター描画は 1 フレームに 1 万点以上評価するので、`analyze()`（オブジェクトを作る通常版）
+ではなく `rawFieldValue(sx, txy, key)`（σθ=σr=0 前提・アロケーション無し）を使う。
+
+#### three.js まわりの注意（ハマりどころ）
+
+- バージョンは `index.html` の importmap に **2 箇所**（`three` と `three/addons/`）書いてある。
+  変更するときは両方を揃える（`beam/worker.js` の Pyodide と同じ話）。現在 `0.180.0`。
+  実在確認は `curl -I https://cdn.jsdelivr.net/npm/three@X.Y.Z/build/three.module.js`。
+- **ライトの強度を大きめ（AmbientLight 2.3 など）にしてあるのは意図的**。three.js r155 で
+  `useLegacyLights` が廃止され intensity がそのまま放射照度になったため、Lambert の BRDF で
+  1/π されるぶんを見込まないと図全体が暗い茶色になり、カラーバーと色が合わなくなる。
+  **「コンターが暗い／カラーバーと色が違う」ときは真っ先にここを疑う**（2026-09-18 に実際に発生。
+  一見カラーマップ側のせいに見えたが原因はライト強度だった）。
+- **頂点カラーはリニア色空間として扱われる**。`stress.js` のカラーマップは sRGB なので、
+  `rod3d.js` の冒頭で sRGB→リニア変換済みの 256 段 LUT を作ってそれを引いている。
+- 掴み代（透明メッシュ）は `material.visible = false` ではなく `transparent + opacity: 0` に
+  してある（`visible:false` だとレイキャストされるかがバージョン依存になるため）。
+- 円弧グリフ（曲げ・ねじり）は `TorusGeometry` の `arc` 引数で大きさを表している。
+  Euler(XYZ) の **z 成分が「弧の描き始め位置」**になるので、それを使って弧の中央を見える側
+  （M は端面より外側、T は棒の真上）へ持ってきている。ここを 0 にすると弧が棒の陰に入って
+  ほとんど見えなくなる（2026-09-18 に発生）。向きの反転は「弧の面を裏返す」のではなく
+  「回転軸だけを反転する」こと（裏返すとやはり陰に入る）。
+- カメラのフィットは外接球ではなく、代表点を実際にカメラへ投影して収める方式。細長い棒を
+  外接球で合わせると余白だらけになるため。荷重グリフの張り出しぶんも `axial`/`radial` に
+  含めること（含め忘れると円弧が画面外に出る）。
+
+#### 入力の取り合い（無限ループ防止）
+
+- `app.js` → `rod3d.js` は `rod.set({geom, loads, field, sectionT})` で**まとめて1回**渡す
+  （個別 setter を連打すると `rebuild()` が何度も走る）。
+- 逆向き（3D図のドラッグ → UI）は `onLoadsChange` / `onSectionChange` / `onPick` コールバック。
+  受け側は `update({fromScene: true})` として `rod.set()` を呼び返さない。
+- `update()` は関数宣言で巻き上がるが `let updating` は巻き上がらない。`RodScene` の生成直後に
+  `setProbe()` → `onPick` → `update()` が走るため、**`let updating` はシーン生成より前に
+  宣言しておくこと**（順序を戻すと `Cannot access 'updating' before initialization` になる）。
+- OrbitControls は canvas に listener を張るので、**その親（`#viewport`）のキャプチャ段階**で
+  先にレイキャストし、グリフ or 棒に当たったときだけ `stopPropagation()` して操作を奪っている。
+  「背景のドラッグだけが視点回転」になるのはこのため。
+- 断面（輪切り）の位置は、ユーザーの当初の要望は「上下ドラッグ」だったが、視点を自由に回せる
+  3D では**棒の軸方向に沿ってドラッグ**する方が自然なのでそちらにしてある（スライダーもある）。
+
+- デバッグ用に `window.__mohr = {state, rod, update}` を公開してある。ブラウザの console から
+  `__mohr.state.loads` や `__mohr.rod.probe` を覗ける。
+
 ### `common/style.css`
 
 全単元共通スタイル。**ダークモード非対応（意図的）**: `color-scheme: light only` を指定し、
@@ -186,11 +277,22 @@ consoleやNetwork/console.logで確認するとよい）。
 - 解説文（`explanation_*`）は素朴に `<p>` へ入れてから `renderMathInElement`（KaTeX auto-render、
   delimiter `$...$`）を実行するだけ。追加パース不要（Beam.py側の文字列規約に乗っかっている）。
 
-## 現在のスコープ（Phase 1、`beam/`のみ実装済み）
+## 現在のスコープ
+
+### `beam/`（Phase 1）
 
 - 支点・荷重の完全自由配置（pin/roller/fixed、集中荷重/集中モーメント/分布荷重）
 - 出力: 梁図、反力（値＋解説）、SFD、BMD（値＋解説）
 - 断面・材料は `bridge.py` 内の固定デフォルト（矩形100×200mm・軟鋼）— UIには出していない
+
+### `mohr/`（2026-09-18 実装済み）
+
+- 丸棒＋軸力 N / 両端曲げ M / ねじり T。スライダー・数値入力・3D図の矢印ドラッグで変更
+- コンター: σx / σθ / σr / τxθ / σ1 / τmax / σeq（von Mises）をドロップダウンで切替
+- 一部を輪切りに抜いて断面のコンターを表示。輪切り位置は軸に沿ってドラッグ（またはスライダー）
+- 棒の上をドラッグすると探触点が動き、その点のモールの応力円（既定は x–θ 面、
+  チェックボックスで残り2面）・回転角 φ の応力要素図・応力成分の一覧が更新される
+- 材料定数は使っていない（応力までしか出さないので E・ν が不要）
 
 ## 今後の拡張
 
@@ -206,9 +308,13 @@ consoleやNetwork/console.logで確認するとよい）。
 `bridge.py`の`compute_beam()`にキーを追加し、`app.js`の`renderResult()`に対応する描画を足す形で
 段階的に拡張していく想定。
 
-**Phase 3（新規単元、未着手）**
-- `axial/`（引張・圧縮変形）、`torsion/`（ねじり変形）、`mohr/`（モールの応力円）を追加
-- ルートの`index.html`の該当unit-cardの`disabled`クラスを外してリンクを有効化
+**Phase 3（新規単元）**
+- `mohr/`（モールの応力円）… **実装済み**（ルートの`index.html`のunit-cardもリンク済み）
+- `axial/`（引張・圧縮変形）、`torsion/`（ねじり変形）… 未着手。
+  ルートの`index.html`の該当unit-cardの`disabled`クラスを外してリンクを有効化する
+- `mohr/`の今後の拡張余地: x 方向に変化する応力分布（現在は全長で一定なので輪切り位置を
+  動かしても値は変わらない。`stress.js` の `stressAt()` は既に x を引数に取ってある）、
+  ひずみ・主ひずみ、降伏条件（Tresca / von Mises）の可視化
 
 ## デバッグの勘所
 
@@ -264,11 +370,59 @@ consoleやNetwork/console.logで確認するとよい）。
    （最大せん断力/曲げモーメント）の3箇所すべてで通す必要がある（1箇所でも忘れると
    そこだけ潰れたままになる）。他の単元を追加する際も同じ`useDisplayFrac`を流用できる
    （`common/`にJSを切り出すタイミングが来たらそこに含める）。
+9. **claude-in-chrome拡張機能が使えず実ブラウザで見た目を確認できないとき**: `/chrome`は
+   セッション途中で実行しても当該セッション内では有効化されない（新しいセッションが必要）。
+   代わりに**Playwrightのヘッドレスブラウザで代替検証できる**——このマシンには`npm install`
+   済みのグローバルパッケージとしてではなく、`npx`のキャッシュ経由でPlaywrightの実体
+   （chromiumバイナリ込み）が既に存在している。手順:
+   1. `find "$LOCALAPPDATA/npm-cache/_npx" -maxdepth 4 2>/dev/null | grep -i playwright`
+      でキャッシュ内の`node_modules`パス（例: `.../_npx/<hash>/node_modules`）を特定する。
+   2. `python -m http.server <port>` を`sm-lab`直下（リポジトリルート）でバックグラウンド起動
+      （`file://`直開き不可なのは上記2.と同じ理由）。
+   3. `require('playwright')`するNode.jsスクリプトを書き、実行時に
+      `NODE_PATH="<上記node_modulesパス>"`を環境変数で渡す（`npm install`は不要、
+      このリポジトリに`package.json`を足す必要もない）。
+   4. スクリプト内では`page.on('console', ...)`と`page.on('pageerror', ...)`を必ず登録し、
+      Pyodideロードや計算完了を`waitForSelector`/`waitForFunction`で待ってから
+      `page.screenshot({fullPage:true})`。KaTeXの分数が潰れていないかは
+      `document.querySelectorAll('.katex .mfrac').length`等DOM評価で機械的に検証もできるが、
+      **最終的には必ずスクリーンショットを`Read`ツールで目視確認する**（DOM上のクラス名だけでは
+      文字サイズの見た目までは保証できないため）。
+   5. 検証後は`taskkill //F //IM python.exe`等でローカルサーバーを止める。
+   2026-07-23、このやり方で分数表示修正（上記8.）を実ブラウザ相当の環境で検証済み
+   （詳細は[[playwright-headless-browser-test-workflow]]メモリも参照）。
+   **2026-09-18 追記**: `ms-playwright` に入っているブラウザのビルド番号と npx キャッシュの
+   playwright が要求するビルド番号がずれていて `Executable doesn't exist ...` になることがある。
+   `ls "$LOCALAPPDATA/ms-playwright"` で実在するビルドを調べ、
+   `chromium.launch({ executablePath: ".../chromium-<build>/chrome-win64/chrome.exe" })` と
+   直接指定すれば `npx playwright install` 無しで動く。WebGL（`mohr/`の3D表示）を使うページは
+   `args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader']` を
+   付けるとヘッドレスでも描画される。
+10. **`mohr/`で3Dの色が暗い・カラーバーと合わない / 円弧グリフが見えない / 視点がズレる**:
+   いずれも three.js 側の仕様に起因する既知のハマりどころ。上記`mohr/`の節
+   「three.js まわりの注意」を参照（ライト強度・頂点カラーの色空間・TorusGeometry の回転・
+   カメラのフィット方式）。
+
+## コミット・プッシュの運用（毎回やること）
+
+**ひとまとまりの作業が終わったら、その都度 `git commit` して `git push origin master` する**
+（ユーザーからの指示を待たない。2026-09-18にユーザーから明示的に依頼）。理由:
+`master`へのpushがそのままGitHub Pagesの公開内容になるので、手元だけ進んでいて公開版が
+古いままという状態を作らないため。
+
+- ブランチは`master`（このリポジトリの既定ブランチ。作業ブランチは切らない運用）
+- コミット単位は「単元ひとつ」「バグ修正ひとつ」程度。README/CLAUDE.mdの更新は
+  その作業を説明するものなので同じコミットに含めてよい
+- コミットメッセージは日本語で、`beam: ...` / `mohr: ...` のように単元名を接頭辞に付ける
+  （単元をまたぐ変更や文書だけの変更は接頭辞なしでよい）
+- push後、GitHub Pagesの反映には1〜2分かかる。見た目の確認は
+  `https://yusaku-m.github.io/sm-lab/` で行う
+- **例外**: 動作確認が済んでいない・壊れていると分かっているコードはpushしない
+  （公開ページが壊れるため）。その場合はコミットだけ行い、直してからpushする
 
 ## デプロイ
 
 `https://github.com/yusaku-m/sm-lab`（Public）へpush済み。GitHub Pagesは`master`ブランチ・
 `/ (root)`で配信（Settings → Pages）。公開URL: `https://yusaku-m.github.io/sm-lab/`。
 リポジトリ直下に`.nojekyll`必須（上記「デバッグの勘所」参照）。
-新規GitHubリポジトリの作成・公開設定は毎回ユーザーに確認してから行う（このリポジトリ自体、
-まだGit管理下に置いていない/pushしていない）。
+新規GitHubリポジトリの作成・公開設定は毎回ユーザーに確認してから行う。

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>モールの応力円 — 丸棒の応力状態</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<header class="site-head">
+  <a class="home-link" href="../index.html">← sm-lab トップへ</a>
+  <h1>モールの応力円</h1>
+  <p class="lede">丸棒に引張（圧縮）・両端の曲げモーメント・ねじりモーメントを加え、棒の中の任意の点をなぞると、その点の応力状態がモールの応力円として現れます。荷重の矢印は直接ドラッグして大きさを変えられます。</p>
+</header>
+
+<main class="lab">
+
+  <!-- ------------------------------------------------ 丸棒（3D） -->
+  <section class="card rod-card">
+    <p class="kicker">Stress field</p>
+    <h2>丸棒の応力分布</h2>
+    <p class="sub">棒の上をドラッグすると探触点が動きます。背景をドラッグすると視点が回ります。青い矢印＝軸力 <em>N</em>、橙の円弧＝曲げ <em>M</em>、緑の円弧＝ねじり <em>T</em>。黒いリングをドラッグすると輪切りの位置が動きます。</p>
+
+    <div class="toolbar">
+      <label for="field">コンター</label>
+      <select id="field"></select>
+      <button class="btn" id="reset-view" type="button">視点をリセット</button>
+    </div>
+
+    <div class="viewport" id="viewport">
+      <div class="hint" id="hint">読み込み中…</div>
+    </div>
+
+    <div class="colorbar">
+      <div class="cb-title" id="cb-title"></div>
+      <div class="bar" id="cb-bar"></div>
+      <div class="ticks"><span id="cb-lo"></span><span id="cb-mid"></span><span id="cb-hi"></span></div>
+    </div>
+
+    <div class="probe" id="probe"></div>
+    <div class="err" id="err" hidden></div>
+  </section>
+
+  <!-- ------------------------------------------------ モールの応力円 -->
+  <section class="card mohr-card">
+    <p class="kicker">Mohr&rsquo;s circle</p>
+    <h2>モールの応力円</h2>
+    <p class="sub">探触点の応力状態。実線の円が x–θ 面（軸方向と周方向がつくる面）で、面を <em>φ</em> だけ回すと応力円上の点は 2<em>φ</em> だけ動きます。</p>
+
+    <div class="checks" id="plane-checks"></div>
+    <div class="plot" id="mohr-plot"></div>
+
+    <div class="field-row" style="margin-top:14px">
+      <div class="field-head">
+        <span class="name"><em>φ</em> 断面の回転角</span>
+        <span class="unit">deg</span>
+      </div>
+      <div class="field-inputs">
+        <input type="range" id="phi" min="-90" max="90" step="1" value="0">
+        <input type="number" id="phi-num" min="-90" max="90" step="1" value="0">
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:8px">
+      <button class="btn" id="phi-principal" type="button">主応力の向きへ</button>
+      <button class="btn" id="phi-tmax" type="button">最大せん断の向きへ</button>
+      <button class="btn" id="phi-zero" type="button">φ = 0</button>
+    </div>
+
+    <div class="element-wrap">
+      <div class="plot" id="element-plot"></div>
+      <table class="stress-table" id="stress-table"></table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ 荷重・寸法 -->
+  <section class="card controls-card">
+    <p class="kicker">Loads &amp; geometry</p>
+    <h2>荷重と寸法</h2>
+    <p class="sub">数値を直接入力するか、スライダー、あるいは 3D 図の矢印をドラッグして変更します。</p>
+    <div id="load-fields"></div>
+    <hr class="divider">
+    <div id="geom-fields"></div>
+  </section>
+
+  <!-- ------------------------------------------------ 式 -->
+  <section class="card notes-card">
+    <p class="kicker">Formulas</p>
+    <h2>使っている式</h2>
+
+    <div class="formula">
+      <div class="cap">断面諸量（直径 d の中実円）</div>
+      <div id="f-section"></div>
+    </div>
+    <div class="formula">
+      <div class="cap">点 (r, a) の応力成分。y = r cos a は曲げの中立軸から測った高さ</div>
+      <div id="f-stress"></div>
+    </div>
+    <div class="formula">
+      <div class="cap">現在の探触点での値</div>
+      <div id="f-current"></div>
+    </div>
+    <div class="formula">
+      <div class="cap">φ だけ回した面の応力（モールの応力円の式）</div>
+      <div id="f-rot"></div>
+    </div>
+    <p>内圧などが無いので周方向・半径方向の垂直応力は恒等的に 0 になります。つまり丸棒のこの状態は「軸方向の一軸応力＋ねじりせん断」であり、応力円が原点まわりでどう動くかを見ると、引張だけ・ねじりだけ・その組合せの違いがそのまま読み取れます。</p>
+  </section>
+
+</main>
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
