@@ -63,6 +63,25 @@
     <p class="phi-note">面を <span class="tex" data-tex="\phi"></span> 回すと、応力円上の点は <span class="tex" data-tex="2\phi"></span> 動きます。</p>
 
     <div class="checks" id="plane-checks"></div>
+
+    <div class="toolbar toolbar-tight axis-ctrl">
+      <label for="axis-mode">軸の範囲</label>
+      <select id="axis-mode">
+        <option value="auto">自動</option>
+        <option value="fixed">固定</option>
+      </select>
+      <span class="axis-fields" id="axis-fields" hidden>
+        <span class="axis-field"><span class="tex" data-tex="\sigma"></span>
+          <input type="number" id="axis-smin" step="10"> 〜
+          <input type="number" id="axis-smax" step="10">
+        </span>
+        <span class="axis-field"><span class="tex" data-tex="\tau"></span> ±
+          <input type="number" id="axis-tmax" step="10">
+        </span>
+        <button class="btn" id="axis-grab" type="button">いまの範囲を取り込む</button>
+      </span>
+    </div>
+
     <div class="plot plot-mohr" id="mohr-plot"></div>
 
     <div class="rotate-area">

@@ -65,13 +65,13 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const F = (v) => +(v * fs).toFixed(2);
 
   const W = 470;
-  const H = 356;
+  let H = 356;
   const ml = 26 + 20 * fs;
   const mr = 24;
   const mt = 20;
   const mb = 28 + 14 * fs;
   const pw = W - ml - mr;
-  const ph = H - mt - mb;
+  let ph = H - mt - mb;
 
   const shown = PLANES.filter((p) => visible[p.key]);
   const circles = shown.map((p) => {
@@ -81,20 +81,40 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     return { plane: p, c: (a + b) / 2, r: Math.hypot((a - b) / 2, t), a, b, t };
   });
 
+  // 軸の範囲。固定なら指定値そのまま（余白を足さない）、自動なら円に合わせる。
+  const axis = opts.axis && opts.axis.mode === 'fixed' ? opts.axis : null;
   let sMin = 0, sMax = 0, tMax = 0;
-  for (const c of circles) {
-    sMin = Math.min(sMin, c.c - c.r);
-    sMax = Math.max(sMax, c.c + c.r);
-    tMax = Math.max(tMax, c.r);
+  if (axis) {
+    sMin = Math.min(axis.sMin, axis.sMax);
+    sMax = Math.max(axis.sMin, axis.sMax);
+    tMax = Math.abs(axis.tMax);
+    if (sMax - sMin < 1e-6) sMax = sMin + 1;
+    if (tMax < 1e-6) tMax = 1;
+  } else {
+    for (const c of circles) {
+      sMin = Math.min(sMin, c.c - c.r);
+      sMax = Math.max(sMax, c.c + c.r);
+      tMax = Math.max(tMax, c.r);
+    }
+    // 荷重ゼロでも軸が潰れないように最小スパンを確保
+    const floor = Math.max(1, (sMax - sMin) * 0.02);
+    if (sMax - sMin < floor) { sMax += floor / 2; sMin -= floor / 2; }
+    if (tMax < floor / 2) tMax = floor / 2;
+    const padS = (sMax - sMin) * 0.14;
+    sMin -= padS; sMax += padS;
+    tMax *= 1.22;
   }
-  // 荷重ゼロでも軸が潰れないように最小スパンを確保
-  const floor = Math.max(1, (sMax - sMin) * 0.02);
-  if (sMax - sMin < floor) { sMax += floor / 2; sMin -= floor / 2; }
-  if (tMax < floor / 2) tMax = floor / 2;
-  const padS = (sMax - sMin) * 0.14;
-  sMin -= padS; sMax += padS;
-  tMax *= 1.22;
 
+  if (axis) {
+    // 指定した範囲がそのまま映るように、プロット領域の縦横比を範囲の比に合わせる
+    // （円が円に見えるよう縦横のスケールは常に同じにしているので、こうしないと
+    //   片方が指定より広く映って「入力した値と目盛りが合わない」ことになる）。
+    // 極端な比を指定されたときだけ上下に丸め、その場合は従来どおり両方が収まる
+    // ように縮める（指定より広く映る）。
+    const want = (2 * tMax * pw) / (sMax - sMin);
+    ph = Math.min(Math.max(want, 130), 620);
+    H = mt + ph + mb;
+  }
   const k = Math.min(pw / (sMax - sMin), ph / (2 * tMax));
   const sMid = (sMin + sMax) / 2;
   const cx = ml + pw / 2;
@@ -102,10 +122,26 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const X = (s) => cx + (s - sMid) * k;
   const Y = (t) => cy - t * k;
   const clampX = (x) => Math.min(ml + pw, Math.max(ml, x));
+  // 円が円に見えるよう縦横のスケールは同じにしているので、指定した範囲より
+  // 片方が広く映る。目盛りと「取り込む」ボタンは実際に映る範囲を使う。
+  const shownS = [sMid - pw / 2 / k, sMid + pw / 2 / k];
+  const shownT = ph / 2 / k;
+  const inPlot = (s, t) => s >= shownS[0] && s <= shownS[1] && Math.abs(t) <= shownT;
+  sMin = shownS[0];
+  sMax = shownS[1];
+  tMax = shownT;
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'モールの応力円' });
   const font = 'Inter, "Noto Sans JP", sans-serif';
   const serif = 'Georgia, serif';
+
+  // 軸を固定したとき、範囲外へ出た円や弦はここで切る（はみ出しが見えるように）
+  const defs = el('defs', {});
+  const clip = el('clipPath', { id: 'mohr-plot-clip' });
+  clip.appendChild(el('rect', { x: ml, y: mt, width: pw, height: ph }));
+  defs.appendChild(clip);
+  svg.appendChild(defs);
+  const CLIP = 'url(#mohr-plot-clip)';
 
   // --- 目盛り
   const step = niceStep(sMax - sMin, 6);
@@ -141,7 +177,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const ordered = circles.slice().sort((p, q) => (p.plane.key === 'xy' ? 1 : 0) - (q.plane.key === 'xy' ? 1 : 0));
   for (const c of ordered) {
     const main = c.plane.key === 'xy';
-    const g = el('g', {});
+    const g = el('g', { 'clip-path': CLIP });
     g.appendChild(
       el('circle', {
         cx: X(c.c), cy: Y(0), r: Math.max(0.6, c.r * k),
@@ -160,6 +196,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const used = [];
   const lh = F(13);
   labelled.forEach(([name, v]) => {
+    if (!inPlot(v, 0)) return; // 軸を固定していて範囲外なら描かない
     const x = X(v);
     let y = Y(0) + F(24);
     while (used.some((u) => Math.abs(u.x - x) < F(42) && Math.abs(u.y - y) < lh)) y += lh + 1;
@@ -175,7 +212,8 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     const rot = rotated(comps, phi);
     const A = { s: rot.sn, t: rot.tau };
     const B = { s: rot.sn90, t: -rot.tau };
-    const g = el('g', {});
+    const g = el('g', { 'clip-path': CLIP });
+    const gLab = el('g', {}); // ラベルはクリップしない（点が範囲内のときだけ描く）
 
     // φ=0 の直径（基準）を点線で残しておく。回した直径との角度差がそのまま 2φ になる。
     g.appendChild(
@@ -214,10 +252,11 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
 
     for (const [pt, name] of [[A, 'x′面'], [B, 'y′面']]) {
+      if (!inPlot(pt.s, pt.t)) continue;
       const px = X(pt.s);
       const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
       g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
-      g.appendChild(
+      gLab.appendChild(
         el('text', {
           x: px + (toRight ? 9 : -9),
           y: Y(pt.t) + (pt.t >= 0 ? -F(8) : F(14)),
@@ -227,6 +266,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
       );
     }
     svg.appendChild(g);
+    svg.appendChild(gLab);
   }
 
   // --- 図の中に主要な数値を書いておく（スマホでは成分表を省略するため）
@@ -237,6 +277,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   );
 
   host.replaceChildren(svg);
+  return { sMin, sMax, tMax };
 }
 
 // ------------------------------------------------------------ 応力要素の図

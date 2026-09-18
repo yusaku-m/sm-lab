@@ -19,6 +19,10 @@ const state = {
   phi: 0, // deg
   sectionT: 0.3,
   probe: { r: 25, a: 0 }, // 探触点（r [mm], a [deg]）。初期値は setGeomDefaults で直径に合わせる
+  // 応力円の軸範囲。'auto' は円に合わせて自動、'fixed' は下の値に固定する。
+  // 固定すると荷重を変えても目盛りが動かないので、符号が変わる/大きさが変わる
+  // ときの円の動きがそのまま見える（自動だと円の見かけの大きさが変わらない）。
+  axis: { mode: 'auto', sMin: -60, sMax: 120, tMax: 60 },
 };
 
 // ---------------------------------------------------------------- URL 状態
@@ -42,6 +46,10 @@ function buildHash() {
   const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
   q.set('pr', String(round(pr, 1)));
   q.set('pa', String(round(pa, 1)));
+  if (state.axis.mode === 'fixed') {
+    const a = state.axis;
+    q.set('ax', [round(a.sMin, 1), round(a.sMax, 1), round(a.tMax, 1)].join(','));
+  }
   return q.toString();
 }
 
@@ -72,6 +80,12 @@ function applyHash(hash) {
   }
   state.probe.r = num('pr', 0, state.geom.d / 2, state.geom.d / 2);
   state.probe.a = num('pa', -360, 360, state.probe.a);
+  if (q.has('ax')) {
+    const v = q.get('ax').split(',').map(parseFloat);
+    if (v.length === 3 && v.every(Number.isFinite)) {
+      state.axis = { mode: 'fixed', sMin: v[0], sMax: v[1], tMax: v[2] };
+    }
+  }
   return true;
 }
 
@@ -234,6 +248,67 @@ addPresetButtons($('presets'), null);
 // 丸棒パネルにも置く（スマホでは荷重パネルが画面外なので、よく使う2つだけ手元に）
 addPresetButtons($('rod-actions'), null, 'preset-mobile');
 
+// ------------------------------------------------------------ 軸の範囲
+
+const axisInputs = {
+  sMin: $('axis-smin'),
+  sMax: $('axis-smax'),
+  tMax: $('axis-tmax'),
+};
+
+function syncAxisUI() {
+  $('axis-mode').value = state.axis.mode;
+  $('axis-fields').hidden = state.axis.mode !== 'fixed';
+  for (const k in axisInputs) {
+    if (document.activeElement !== axisInputs[k]) {
+      axisInputs[k].value = String(round(state.axis[k], 1));
+    }
+  }
+}
+
+$('axis-mode').addEventListener('change', () => {
+  if ($('axis-mode').value === 'fixed') {
+    // 自動から切り替えた瞬間は「いま見えている範囲」を初期値にする
+    state.axis = { mode: 'fixed', ...roundAxis(shownAxis) };
+  } else {
+    state.axis = { ...state.axis, mode: 'auto' };
+  }
+  syncAxisUI();
+  update();
+});
+
+for (const k in axisInputs) {
+  axisInputs[k].addEventListener('input', () => {
+    const v = parseFloat(axisInputs[k].value);
+    if (!Number.isFinite(v)) return;
+    state.axis[k] = v;
+    state.axis.mode = 'fixed';
+    update();
+  });
+}
+
+$('axis-grab').addEventListener('click', () => {
+  state.axis = { mode: 'fixed', ...roundAxis(shownAxis) };
+  syncAxisUI();
+  update();
+});
+
+function roundAxis(a) {
+  // 目盛りが読みやすい刻みに丸める
+  const step = (span) => {
+    const raw = span / 6;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+    const n = raw / mag;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  };
+  const st = step(a.sMax - a.sMin);
+  return {
+    sMin: Math.floor(a.sMin / st) * st,
+    sMax: Math.ceil(a.sMax / st) * st,
+    tMax: Math.ceil(a.tMax / st) * st,
+  };
+}
+
 // ---------------------------------------------------------------- φ
 
 const phiRange = $('phi');
@@ -271,6 +346,8 @@ function wrap90(deg) {
 let updating = false;
 let hashTimer = 0;
 let lastHash = '';
+// 直前に実際に描いた軸範囲（「いまの範囲を取り込む」で使う）
+let shownAxis = { sMin: -60, sMax: 120, tMax: 60 };
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -372,8 +449,9 @@ function update(opts = {}) {
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
 
-    renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
+    shownAxis = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
+      axis: state.axis,
     });
     renderElement($('element-plot'), comps, an, phi, {
       fontScale: isCompact() ? 2.1 : 1,
@@ -471,6 +549,7 @@ window.addEventListener('hashchange', () => {
   lastHash = h;
   applyHash(h);
   $('field').value = state.field;
+  syncAxisUI();
   for (const k in planeInputs) planeInputs[k].checked = !!state.planes[k];
   phiRange.value = state.phi;
   phiNum.value = String(round(state.phi, 1));
@@ -596,6 +675,7 @@ function renderTexSpans() {
 }
 
 function boot() {
+  syncAxisUI();
   // φ の入力欄は HTML に value="0" が入っているので、URL から復元した値を反映させる
   phiRange.value = state.phi;
   phiNum.value = String(round(state.phi, 1));

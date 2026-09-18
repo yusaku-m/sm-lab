@@ -24,6 +24,12 @@
 
 * { box-sizing: border-box; }
 
+/* hidden 属性の display:none は UA スタイル由来なので、author 側で display を
+   指定した要素（.axis-fields など）には負けて効かない。このプロジェクトは
+   hidden 属性で出し入れする箇所が複数あるので、ここで確実に効かせておく。
+   2026-09-18、軸範囲の入力欄が「自動」でも消えずに残っていて発覚。 */
+[hidden] { display: none !important; }
+
 html {
   background:
     radial-gradient(circle at 14% 22%, #ef6a4b1a, #0000 26%),
@@ -296,6 +302,31 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 }
 .divider { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 
+/* ---------- 応力円の軸範囲 ---------- */
+.axis-ctrl { margin-bottom: 10px; row-gap: 8px; }
+.axis-ctrl > label { font-size: 0.78rem; }
+.axis-fields {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.axis-field { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.axis-fields input[type="number"] {
+  width: 4.4rem;
+  border: 1px solid var(--line-solid);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 4px 6px;
+  font-size: 0.78rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.axis-fields .btn { font-size: 0.74rem; padding: 5px 10px; }
+
 /* ---------- mohr plot ---------- */
 .plot { width: 100%; }
 .plot svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -429,8 +460,9 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   .mohr-card > h2, .rod-card > h2 { font-size: 0.98rem; margin-bottom: 0; }
   .mohr-card .sub, .rod-card .sub { display: none; }
 
-  /* 面の選択トグルは省略。代わりに φ と 2φ の関係を一行だけ出す */
+  /* 面の選択トグルと軸範囲の設定UIは省略（軸範囲は URL で渡された値がそのまま効く） */
   .mohr-card .checks { display: none; }
+  .axis-ctrl { display: none; }
   .phi-note {
     display: block;
     margin: 4px 0 7px;
