@@ -33,19 +33,18 @@
     <p class="sub">棒の上をドラッグすると探触点が動きます。背景をドラッグすると視点が回ります。青い矢印＝軸力 <em>N</em>、橙の円弧＝曲げ <em>M</em>、緑の円弧＝ねじり <em>T</em>。黒いリングをドラッグすると輪切りの位置が動きます。</p>
 
     <div class="toolbar">
-      <label for="field">コンター</label>
+      <label for="field" class="field-label">コンター</label>
       <select id="field"></select>
       <button class="btn" id="reset-view" type="button">視点をリセット</button>
     </div>
 
     <div class="viewport" id="viewport">
+      <div class="colorbar">
+        <div class="cb-title" id="cb-title"></div>
+        <div class="bar" id="cb-bar"></div>
+        <div class="ticks"><span id="cb-lo"></span><span id="cb-mid"></span><span id="cb-hi"></span></div>
+      </div>
       <div class="hint" id="hint">読み込み中…</div>
-    </div>
-
-    <div class="colorbar">
-      <div class="cb-title" id="cb-title"></div>
-      <div class="bar" id="cb-bar"></div>
-      <div class="ticks"><span id="cb-lo"></span><span id="cb-mid"></span><span id="cb-hi"></span></div>
     </div>
 
     <div class="probe" id="probe"></div>
@@ -59,9 +58,18 @@
     <p class="sub">探触点の応力状態。実線の円が x–θ 面（軸方向と周方向がつくる面）で、面を <em>φ</em> だけ回すと応力円上の点は 2<em>φ</em> だけ動きます。</p>
 
     <div class="checks" id="plane-checks"></div>
-    <div class="plot" id="mohr-plot"></div>
+    <div class="toolbar toolbar-tight">
+      <button class="btn btn-accent" id="pick-max" type="button">応力円が最大の点へ</button>
+    </div>
+    <div class="plot plot-mohr" id="mohr-plot"></div>
+  </section>
 
-    <div class="field-row" style="margin-top:14px">
+  <!-- ------------------------------------------------ 面の回転・応力成分 -->
+  <section class="card detail-card">
+    <p class="kicker">Rotation &amp; components</p>
+    <h2>面の回転と応力成分</h2>
+
+    <div class="field-row">
       <div class="field-head">
         <span class="name"><em>φ</em> 断面の回転角</span>
         <span class="unit">deg</span>
@@ -88,6 +96,7 @@
     <p class="kicker">Loads &amp; geometry</p>
     <h2>荷重と寸法</h2>
     <p class="sub">数値を直接入力するか、スライダー、あるいは 3D 図の矢印をドラッグして変更します。</p>
+    <div class="toolbar toolbar-tight" id="presets"></div>
     <div id="load-fields"></div>
     <hr class="divider">
     <div id="geom-fields"></div>

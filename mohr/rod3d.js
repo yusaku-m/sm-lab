@@ -117,6 +117,31 @@ function makeArrow(color) {
   return g;
 }
 
+/** 記号ラベル（x / θ / r）用のスプライト。常に正面を向き、棒の陰に隠れない。 */
+function makeLabelSprite(text, color) {
+  const px = 128;
+  const cv = document.createElement('canvas');
+  cv.width = px;
+  cv.height = px;
+  const g = cv.getContext('2d');
+  g.font = 'italic bold 86px Georgia, "Times New Roman", serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineWidth = 14;
+  g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(255, 253, 247, 0.92)'; // 紙色のフチ（棒の上でも読めるように）
+  g.strokeText(text, px / 2, px / 2);
+  g.fillStyle = color;
+  g.fillText(text, px / 2, px / 2);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false })
+  );
+  sp.renderOrder = 20;
+  return sp;
+}
+
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -316,6 +341,12 @@ export class RodScene {
       r: makeArrow(0x245b8d), // e_r
     };
     for (const k in this.probeAxes) this.probeGroup.add(this.probeAxes[k]);
+    this.probeLabels = {
+      x: makeLabelSprite('x', '#bd442c'),
+      t: makeLabelSprite('θ', '#2f8f6f'),
+      r: makeLabelSprite('r', '#245b8d'),
+    };
+    for (const k in this.probeLabels) this.probeGroup.add(this.probeLabels[k]);
   }
 
   // ------------------------------------------------------------ 更新
@@ -554,10 +585,18 @@ export class RodScene {
     const ex = new THREE.Vector3(1, 0, 0);
     const er = new THREE.Vector3(0, Math.cos(a), Math.sin(a));
     const et = new THREE.Vector3(0, -Math.sin(a), Math.cos(a));
-    const len = R * 0.8;
-    placeArrow(this.probeAxes.x, p, p.clone().addScaledVector(ex, len), R * 0.04);
-    placeArrow(this.probeAxes.t, p, p.clone().addScaledVector(et, len), R * 0.04);
-    placeArrow(this.probeAxes.r, p, p.clone().addScaledVector(er, len * 0.75), R * 0.04);
+    const len = R * 1.05;
+    placeArrow(this.probeAxes.x, p, p.clone().addScaledVector(ex, len), R * 0.05);
+    placeArrow(this.probeAxes.t, p, p.clone().addScaledVector(et, len), R * 0.05);
+    placeArrow(this.probeAxes.r, p, p.clone().addScaledVector(er, len * 0.75), R * 0.05);
+    // 各軸の先に記号ラベル（x=軸方向, θ=周方向, r=半径方向）
+    const lab = R * 0.72;
+    this.probeLabels.x.scale.setScalar(lab);
+    this.probeLabels.t.scale.setScalar(lab);
+    this.probeLabels.r.scale.setScalar(lab);
+    this.probeLabels.x.position.copy(p).addScaledVector(ex, len + lab * 0.6);
+    this.probeLabels.t.position.copy(p).addScaledVector(et, len + lab * 0.6);
+    this.probeLabels.r.position.copy(p).addScaledVector(er, len * 0.75 + lab * 0.6);
   }
 
   // ------------------------------------------------------------ カメラ

@@ -85,18 +85,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
   grid-template-areas:
     "rod   mohr"
     "ctrl  mohr"
+    "ctrl  detail"
     "notes notes";
 }
 .rod-card { grid-area: rod; }
 .controls-card { grid-area: ctrl; }
 .mohr-card { grid-area: mohr; }
+.detail-card { grid-area: detail; }
 .notes-card { grid-area: notes; }
 
-/* スマホ: モールの応力円を上、丸棒を下（親指で棒を触っても円が隠れない） */
+/* スマホ: 応力円を上・丸棒を下に並べ、この2枚が同時に見えるようにする
+   （親指で棒を触っても円が隠れない。φスライダー・成分表は detail-card として下段へ回す） */
 @media (max-width: 920px) {
   .lab {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "mohr" "rod" "ctrl" "notes";
+    grid-template-areas: "mohr" "rod" "detail" "ctrl" "notes";
   }
 }
 
@@ -151,6 +154,15 @@ select, .btn {
 select:hover, .btn:hover { border-color: var(--accent-soft); }
 .btn { cursor: pointer; }
 .btn:active { background: #f6f1e7; }
+.btn-accent {
+  border-color: var(--accent-soft);
+  background: #fdf0ea;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.btn-accent:hover { border-color: var(--accent); background: #fce5dc; }
+.toolbar-tight { gap: 8px; margin-bottom: 10px; }
+.toolbar-tight .btn { padding: 6px 12px; font-size: 0.78rem; }
 
 .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
 .check {
@@ -191,8 +203,20 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   line-height: 1.55;
 }
 
-/* ---------- colorbar ---------- */
-.colorbar { margin-top: 12px; }
+/* ---------- colorbar（3D図の上に重ねる） ---------- */
+.colorbar {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  width: min(320px, calc(100% - 24px));
+  margin: 0;
+  padding: 7px 10px 6px;
+  background: #fffdf7d9;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 2;
+}
 .colorbar .bar {
   height: 12px;
   border-radius: 999px;
@@ -265,6 +289,7 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 /* ---------- mohr plot ---------- */
 .plot { width: 100%; }
 .plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.check .short { display: none; }
 .element-wrap {
   display: grid;
   grid-template-columns: minmax(0, 232px) minmax(0, 1fr);
@@ -313,4 +338,41 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   font-size: 0.8rem;
   margin-top: 10px;
   white-space: pre-wrap;
+}
+
+/* スマホで「応力円＋コンター図」を1画面に収めるための圧縮。
+   カードの飾り（kicker・説明文）を落とし、2つの図の高さを vh で配分する。 */
+@media (max-width: 760px) {
+  body { padding: 0 10px 48px; }
+  .site-head { padding: 16px 2px 10px; }
+  .site-head .lede { font-size: 0.82rem; line-height: 1.6; }
+  .lab { gap: 10px; }
+  .mohr-card, .rod-card { padding: 12px; border-radius: 14px; }
+  .mohr-card .kicker, .rod-card .kicker { display: none; }
+  .mohr-card > h2, .rod-card > h2 { font-size: 1.02rem; margin-bottom: 0; }
+  .mohr-card .sub, .rod-card .sub { display: none; }
+  .mohr-card .checks { margin: 8px 0 6px; gap: 6px 10px; }
+  .mohr-card .toolbar-tight { margin: 0 0 6px; }
+  .plot-mohr svg { max-height: 30vh; max-height: 30svh; }
+  .viewport {
+    height: 30vh;
+    height: 30svh;
+    min-height: 186px;
+    margin-top: 8px;
+  }
+  .rod-card .toolbar { flex-wrap: nowrap; gap: 8px; margin-bottom: 0; }
+  .rod-card .toolbar .field-label { display: none; }
+  .rod-card .toolbar select { flex: 1 1 auto; min-width: 0; font-size: 0.76rem; padding: 6px 10px; }
+  .rod-card .toolbar .btn { flex: 0 0 auto; font-size: 0.76rem; padding: 6px 10px; }
+  .colorbar { left: 8px; top: 7px; padding: 5px 8px 4px; width: calc(100% - 16px); }
+  .colorbar .cb-title { margin-bottom: 3px; font-size: 0.66rem; }
+  .colorbar .bar { height: 8px; }
+  .colorbar .ticks { font-size: 0.64rem; margin-top: 3px; }
+  .viewport .hint { font-size: 0.62rem; padding: 4px 7px; left: 8px; bottom: 7px; }
+  .viewport .hint .hint-more { display: none; }
+  .probe { margin-top: 8px; padding: 8px 10px; font-size: 0.74rem; line-height: 1.5; }
+  .probe .note { display: none; }
+  /* 平面のチェックは短縮表記にして1行に収める */
+  .check .long { display: none; }
+  .check .short { display: inline; }
 }

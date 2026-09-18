@@ -116,12 +116,36 @@ for (const p of PLANES) {
   lab.className = 'check';
   lab.innerHTML =
     `<input type="checkbox"${state.planes[p.key] ? ' checked' : ''}>` +
-    `<span class="swatch" style="background:${p.color}"></span><span>${p.label}</span>`;
+    `<span class="swatch" style="background:${p.color}"></span>` +
+    `<span class="long">${p.label}</span><span class="short">${p.short} 面</span>`;
   lab.querySelector('input').addEventListener('change', (e) => {
     state.planes[p.key] = e.target.checked;
     update();
   });
   $('plane-checks').appendChild(lab);
+}
+
+// ---------------------------------------------------------------- プリセット
+
+// 「単純◯◯」= 指定の荷重だけ残して他を 0 にする。
+// 残す側が 0 のときだけ既定値を入れる（ユーザーが決めた大きさを勝手に変えないため）。
+const PRESETS = [
+  { key: 'N', label: '単純引張', fallback: 40 },
+  { key: 'M', label: '単純曲げ', fallback: 260 },
+  { key: 'T', label: '単純ねじり', fallback: 300 },
+];
+
+for (const preset of PRESETS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn';
+  b.textContent = preset.label;
+  b.addEventListener('click', () => {
+    for (const q of PRESETS) state.loads[q.key] = q.key === preset.key ? state.loads[q.key] : 0;
+    if (!state.loads[preset.key]) state.loads[preset.key] = preset.fallback;
+    update();
+  });
+  $('presets').appendChild(b);
 }
 
 // ---------------------------------------------------------------- φ
@@ -179,7 +203,9 @@ try {
   rod.set({ geom: state.geom, loads: state.loads, field: state.field, sectionT: state.sectionT });
   rod.fitCamera(true);
   rod.setProbe(state.geom.d / 2, 0); // 既定は断面の上端（曲げ引張側の表面）
-  $('hint').innerHTML = 'ドラッグ: <b>棒の上</b>＝探触点 ／ <b>背景</b>＝視点回転 ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置';
+  $('hint').innerHTML =
+    'ドラッグ: <b>棒</b>＝探触点 ／ <b>背景</b>＝視点回転' +
+    '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>';
 } catch (e) {
   $('err').hidden = false;
   $('err').textContent =
@@ -188,6 +214,30 @@ try {
 }
 
 $('reset-view').addEventListener('click', () => rod && rod.resetView());
+
+// 3つのモールの円のうち一番大きいもの（直径 σ1-σ3 = 2τmax）が最大になる点を探して探触点にする。
+// σx = kN + kM·r·cos a, τ = kT·r という素直な形なので最大は必ず r = R・a = 0 か π に来るが、
+// 将来 x 方向に変化する応力を入れても壊れないよう、素朴に走査して選ぶ（数万回程度で一瞬）。
+function maxCirclePoint() {
+  const sec = sectionProps(state.geom.d);
+  let best = { v: -Infinity, r: sec.R, a: 0 };
+  for (let i = 0; i <= 24; i++) {
+    const r = (i / 24) * sec.R;
+    for (let j = 0; j < 360; j++) {
+      const a = (j / 360) * Math.PI * 2;
+      const an = analyze(stressAt(state.loads, sec, r, a, 0));
+      const v = an.s1 - an.s3;
+      if (v > best.v + 1e-9) best = { v, r, a };
+    }
+  }
+  return best;
+}
+
+$('pick-max').addEventListener('click', () => {
+  if (!rod) return;
+  const best = maxCirclePoint();
+  rod.setProbe(best.r, best.a);
+});
 
 // ---------------------------------------------------------------- 更新
 
@@ -240,9 +290,12 @@ function update(opts = {}) {
 
 function renderColorbar() {
   const f = fieldByKey(state.field);
-  $('cb-title').textContent = `${f.label}　[MPa]`;
-  $('cb-bar').style.background = gradientCss(f.diverging);
   const r = rod ? rod.range : { min: 0, max: 1 };
+  // 「単純ねじり」で σx を見ているときのように、場が全域 0 だと図が一様になる。
+  // 壊れているように見えるので、その旨を書いておく。
+  const flat = Math.abs(r.max - r.min) < 5e-3;
+  $('cb-title').textContent = `${f.label}　[MPa]` + (flat ? '　— この荷重では全域 0' : '');
+  $('cb-bar').style.background = gradientCss(f.diverging);
   $('cb-lo').textContent = fmt(r.min);
   $('cb-mid').textContent = fmt((r.min + r.max) / 2);
   $('cb-hi').textContent = fmt(r.max);
@@ -256,7 +309,7 @@ function renderProbe(p, sec) {
     `x = <span class="val">${p.x.toFixed(1)}</span> mm ／ ` +
     `r = <span class="val">${p.r.toFixed(1)}</span> mm（R = ${sec.R.toFixed(1)} mm）／ ` +
     `a = <span class="val">${deg}</span>°　` +
-    `<span style="opacity:.75">(a は曲げの引張側 +y から測った角度。y = r cos a)</span>`;
+    `<span class="note" style="opacity:.75">(a は曲げの引張側 +y から測った角度。y = r cos a)</span>`;
 }
 
 function renderTable(comps, an, phi) {
