@@ -243,6 +243,11 @@ A = πd²/4,  I = πd⁴/64,  Ip = πd⁴/32
 
 #### 画面構成（PCは2列、スマホは1画面に詰める）
 
+ページ冒頭の説明文（`.site-head .lede`）は**幅制限を付けないこと**。`max-width: 62ch` を
+付けていたらパネルの幅を使い切らず3行になって縦を無駄にしていた（2026-09-18にユーザーから指摘）。
+文章は 1280px 幅で1行に収まる長さ（全角78文字程度）に抑えてある。長さを変えたら
+`.lede` の `height / line-height` を数えて行数を確かめること。
+
 カードは4枚: `rod-card` / `mohr-card` / `controls-card` / `notes-card`。
 PCは2列（`grid-template-areas` が `rod|mohr` / `ctrl|mohr` / `notes notes`）。
 **φスライダー・応力要素の図・成分表は`mohr-card`の中**（円の真下）に置いてある

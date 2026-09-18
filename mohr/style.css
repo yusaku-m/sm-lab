@@ -70,8 +70,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.7;
-  max-width: 62ch;
   margin: 10px 0 0;
+  text-wrap: pretty;
 }
 
 /* ---------- layout ---------- */
