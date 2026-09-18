@@ -295,22 +295,27 @@ export class RodScene {
     this.scene.add(this.glyphGroup);
 
     const C = { N: 0x245b8d, M: 0xef6a4b, T: 0x2f8f6f };
+    // 図に出す記号。軸方向の荷重は講義資料に合わせて P（内部キーは N のまま）。
+    const SYM = { N: 'P', M: 'M', T: 'T' };
+    const SYM_CSS = { N: '#245b8d', M: '#bd442c', T: '#2f8f6f' };
     this.glyphs = { N: [], M: [], T: [] };
     this.handles = [];
 
     for (const end of [-1, 1]) {
       // 軸力: 端面の中心から外向き（引張）/ 内向き（圧縮）の直線矢印
       const arrow = makeArrow(C.N);
-      this.glyphGroup.add(arrow);
-      this.glyphs.N.push({ arrow, end });
+      const nLabel = makeLabelSprite(SYM.N, SYM_CSS.N);
+      this.glyphGroup.add(arrow, nLabel);
+      this.glyphs.N.push({ arrow, end, label: nLabel });
 
       // 曲げ・ねじり: 円弧矢印（弧の角度が大きさに対応）
       for (const kind of ['M', 'T']) {
         const mat = new THREE.MeshLambertMaterial({ color: C[kind] });
         const arc = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 40, 1), mat);
         const head = new THREE.Mesh(UNIT_CONE, mat);
-        this.glyphGroup.add(arc, head);
-        this.glyphs[kind].push({ arc, head, end, mat });
+        const label = makeLabelSprite(SYM[kind], SYM_CSS[kind]);
+        this.glyphGroup.add(arc, head, label);
+        this.glyphs[kind].push({ arc, head, end, mat, label });
       }
     }
 
@@ -339,15 +344,17 @@ export class RodScene {
     );
     this.probeGroup.add(this.probeDot);
     this.probeAxes = {
-      x: makeArrow(0xbd442c), // e_x（軸方向）
-      y: makeArrow(0x2f8f6f), // e_y（周方向）
-      r: makeArrow(0x245b8d), // e_r（半径方向）
+      // 3 軸とも黒。荷重グリフ（P=青 / M=橙 / T=緑）と色が被ると、
+      // 軸と荷重が対応しているように誤解されるため色分けしない。
+      x: makeArrow(0x1d2932), // e_x（軸方向）
+      y: makeArrow(0x1d2932), // e_y（周方向）
+      r: makeArrow(0x1d2932), // e_r（半径方向）
     };
     for (const k in this.probeAxes) this.probeGroup.add(this.probeAxes[k]);
     this.probeLabels = {
-      x: makeLabelSprite('x', '#bd442c'),
-      y: makeLabelSprite('y', '#2f8f6f'),
-      r: makeLabelSprite('r', '#245b8d'),
+      x: makeLabelSprite('x', '#1d2932'),
+      y: makeLabelSprite('y', '#1d2932'),
+      r: makeLabelSprite('r', '#1d2932'),
     };
     for (const k in this.probeLabels) this.probeGroup.add(this.probeLabels[k]);
   }
@@ -498,6 +505,11 @@ export class RodScene {
       const to = new THREE.Vector3(outward ? tip : base, 0, 0);
       if (mag < 0.004) g.arrow.visible = false;
       else placeArrow(g.arrow, from, to, R * 0.13);
+      // 記号 P は矢印の少し上（軸から外して重ならないように）
+      const labScale = R * 0.85;
+      g.label.visible = g.arrow.visible;
+      g.label.scale.setScalar(labScale);
+      g.label.position.set(base + (g.end * len) / 2, R * 0.62, 0);
       g.grabPoint = new THREE.Vector3(base + (g.end * len) / 2, 0, 0);
       g.dirWorld = new THREE.Vector3(g.end, 0, 0); // ここを引くと N が増える向き
     }
@@ -555,6 +567,11 @@ export class RodScene {
           .applyEuler(g.arc.rotation)
           .add(g.arc.position);
         g.grabPoint = mid;
+        // 記号 M / T は弧の中ほどから外へ。弧の面内なので棒には重ならない
+        const outward = mid.clone().sub(g.arc.position).normalize();
+        g.label.visible = g.arc.visible;
+        g.label.scale.setScalar(R * 0.85);
+        g.label.position.copy(mid).addScaledVector(outward, R * 0.62);
         const axis = kind === 'T' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
         axis.multiplyScalar(g.end); // 端ごとの向き
         const rel = mid.clone().sub(g.arc.position);

@@ -94,7 +94,7 @@ compactMq.addEventListener('change', () => {
 // ---------------------------------------------------------------- 入力行
 
 const LOAD_SPEC = [
-  { key: 'N', tex: 'N', name: '軸力（引張が正）', unit: 'kN', min: -RANGES.N, max: RANGES.N, step: 1 },
+  { key: 'N', tex: 'P', name: '荷重（引張が正）', unit: 'kN', min: -RANGES.N, max: RANGES.N, step: 1 },
   { key: 'M', tex: 'M', name: '曲げモーメント（両端）', unit: 'N·m', min: -RANGES.M, max: RANGES.M, step: 5 },
   { key: 'T', tex: 'T', name: 'ねじりモーメント', unit: 'N·m', min: -RANGES.T, max: RANGES.T, step: 5 },
 ];
@@ -418,13 +418,16 @@ function renderShare() {
     host.textContent = 'QR コードを生成できませんでした（ライブラリの読み込み失敗）';
     return;
   }
+  // padding はモジュール単位のクワイエットゾーン。QR 規格は 4 モジュール必要で、
+  // ここを詰めるとカメラを向けても読めない（2026-09-18 に実機で読めず判明）。
+  // 白地・黒でコントラストも最大にしておく。
   host.innerHTML = new QRCode({
     content: url,
-    padding: 1,
-    width: 164,
-    height: 164,
-    color: '#1d2932',
-    background: '#fffdf7',
+    padding: 4,
+    width: 224,
+    height: 224,
+    color: '#000000',
+    background: '#ffffff',
     ecl: 'M',
     join: true,
   }).svg();
@@ -565,7 +568,7 @@ function renderStaticFormulas() {
   katexInto('f-section', `A=\\frac{\\pi d^{2}}{4},\\qquad I=\\frac{\\pi d^{4}}{64},\\qquad I_p=\\frac{\\pi d^{4}}{32}`);
   katexInto(
     'f-stress',
-    `\\sigma_x=\\frac{N}{A}+\\frac{M\\,r\\cos a}{I},\\qquad ` +
+    `\\sigma_x=\\frac{P}{A}+\\frac{M\\,r\\cos a}{I},\\qquad ` +
       `\\tau_{xy}=\\frac{T\\,r}{I_p},\\qquad \\sigma_y=\\sigma_r=0`
   );
   katexInto(

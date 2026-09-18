@@ -387,12 +387,15 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 }
 .share-row .btn { flex: 0 0 auto; }
 .share-qr {
+  /* SVG 自身が 4 モジュールの余白を持つので、枠側の padding は 0 でよい。
+     背景は白（余白と同色）にして、カメラから見て余白が途切れないようにする。 */
   margin: 12px auto 0;
-  width: 164px;
-  padding: 8px;
-  background: var(--paper);
+  width: min(224px, 100%);
+  padding: 0;
+  background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
+  overflow: hidden;
   line-height: 0;
 }
 .share-qr svg { display: block; width: 100%; height: auto; }
