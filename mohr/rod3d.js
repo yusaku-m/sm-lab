@@ -402,7 +402,7 @@ export class RodScene {
     const key = field.key;
     // 応力式の係数（ループ内でのオブジェクト生成を避けるため展開しておく）
     const kN = (this.loads.N * 1000) / sec.A;
-    const kM = (this.loads.M * 1000) / sec.I;
+    const kM = -(this.loads.M * 1000) / sec.I; // 符号は stress.js の σx と同じ（図の向きに合わせる）
     const kT = (this.loads.T * 1000) / sec.Ip;
 
     // --- 1回目: 位置を決めつつ場の値を求める

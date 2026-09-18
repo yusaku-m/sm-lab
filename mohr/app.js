@@ -633,7 +633,7 @@ function renderProbe(p, sec) {
     `x = <span class="val">${p.x.toFixed(1)}</span> mm ／ ` +
     `r = <span class="val">${p.r.toFixed(1)}</span> mm（R = ${sec.R.toFixed(1)} mm）／ ` +
     `a = <span class="val">${deg}</span>°　` +
-    `<span class="note" style="opacity:.75">(a は曲げの引張側から測った角度)</span>`;
+    `<span class="note" style="opacity:.75">(a は断面の上側 +y から測った角度)</span>`;
 }
 
 function renderTable(comps, an, phi) {
@@ -675,7 +675,7 @@ function renderCurrent(sec, p, comps) {
   const tex =
     `\\begin{aligned}` +
     `\\sigma_x&=\\frac{${n(state.loads.N * 1000)}}{${n(sec.A, 1)}}` +
-    `+\\frac{${n(state.loads.M * 1000)}\\times ${n(hb, 1)}}{${n(sec.I, 0)}}` +
+    `-\\frac{${n(state.loads.M * 1000)}\\times ${n(hb, 1)}}{${n(sec.I, 0)}}` +
     `=${fmt(comps.sx)}\\ \\mathrm{MPa}\\\\[2pt]` +
     `\\tau_{xy}&=\\frac{${n(state.loads.T * 1000)}\\times ${n(p.r, 1)}}{${n(sec.Ip, 0)}}` +
     `=${fmt(comps.txy)}\\ \\mathrm{MPa}` +
@@ -687,7 +687,7 @@ function renderStaticFormulas() {
   katexInto('f-section', `A=\\frac{\\pi d^{2}}{4},\\qquad I=\\frac{\\pi d^{4}}{64},\\qquad I_p=\\frac{\\pi d^{4}}{32}`);
   katexInto(
     'f-stress',
-    `\\sigma_x=\\frac{P}{A}+\\frac{M\\,r\\cos a}{I},\\qquad ` +
+    `\\sigma_x=\\frac{P}{A}-\\frac{M\\,r\\cos a}{I},\\qquad ` +
       `\\tau_{xy}=\\frac{T\\,r}{I_p},\\qquad \\sigma_y=\\sigma_r=0`
   );
   katexInto(
