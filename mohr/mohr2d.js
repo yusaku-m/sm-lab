@@ -177,9 +177,15 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     const B = { s: rot.sn90, t: -rot.tau };
     const g = el('g', {});
 
-    // φ=0 の基準点（薄く残す）
-    g.appendChild(el('circle', { cx: X(comps.sx), cy: Y(comps.txy), r: 3, fill: '#ef6a4b', 'fill-opacity': 0.3 }));
-    g.appendChild(el('circle', { cx: X(comps.sy), cy: Y(-comps.txy), r: 3, fill: '#ef6a4b', 'fill-opacity': 0.3 }));
+    // φ=0 の直径（基準）を点線で残しておく。回した直径との角度差がそのまま 2φ になる。
+    g.appendChild(
+      el('line', {
+        x1: X(comps.sx), y1: Y(comps.txy), x2: X(comps.sy), y2: Y(-comps.txy),
+        stroke: '#bd442c', 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'stroke-opacity': 0.45,
+      })
+    );
+    g.appendChild(el('circle', { cx: X(comps.sx), cy: Y(comps.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
+    g.appendChild(el('circle', { cx: X(comps.sy), cy: Y(-comps.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
 
     // 2φ の円弧
     if (Math.abs(phi) > 1e-4 && main.r * k > 10) {
@@ -236,8 +242,12 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
 // ------------------------------------------------------------ 応力要素の図
 
 /** φ だけ回した微小要素に働く応力を描く。 */
-export function renderElement(host, comps, an, phi) {
-  const S = 250;
+export function renderElement(host, comps, an, phi, opts = {}) {
+  // fontScale: スマホでは小さく縮小表示されるので、文字だけ大きく描く
+  // （そのぶんラベルがはみ出さないよう viewBox も少し広げる）
+  const fs = opts.fontScale || 1;
+  const F = (v) => +(v * fs).toFixed(2);
+  const S = 250 + 24 * (fs - 1);
   const c = S / 2;
   const h = 44; // 要素の半辺
   const rot = rotated(comps, phi);
@@ -251,8 +261,8 @@ export function renderElement(host, comps, an, phi) {
   const guide = el('g', { opacity: 0.35 });
   guide.appendChild(el('line', { x1: c - 104, y1: c, x2: c + 104, y2: c, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
   guide.appendChild(el('line', { x1: c, y1: c - 104, x2: c, y2: c + 104, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
-  guide.appendChild(el('text', { x: c + 108, y: c + 4, 'font-size': 11, fill: '#627078', 'font-family': font }, 'x'));
-  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': 11, fill: '#627078', 'font-family': font }, 'θ'));
+  guide.appendChild(el('text', { x: c + 108, y: c + 4, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'x'));
+  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'θ'));
   svg.appendChild(guide);
 
   // 回転した基底（画面は y 上向きなので sin の符号を反転して描く）
@@ -286,7 +296,7 @@ export function renderElement(host, comps, an, phi) {
         el('text', {
           x: c + f.dir[0] * (h + len(f.val) + 16),
           y: c + f.dir[1] * (h + len(f.val) + 16) + 4,
-          'text-anchor': 'middle', 'font-size': 12, fill: f.color, 'font-family': font,
+          'text-anchor': 'middle', 'font-size': F(12), fill: f.color, 'font-family': font,
         }, f.label)
       );
     }
@@ -312,7 +322,7 @@ export function renderElement(host, comps, an, phi) {
       el('text', {
         x: c + t[0] * (h + 20) + n[0] * 40,
         y: c + t[1] * (h + 20) + n[1] * 40 + 4,
-        'text-anchor': 'middle', 'font-size': 12, fill: '#2f8f6f', 'font-family': font,
+        'text-anchor': 'middle', 'font-size': F(12), fill: '#2f8f6f', 'font-family': font,
       }, 'τ')
     );
   }

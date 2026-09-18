@@ -36,15 +36,15 @@ compactMq.addEventListener('change', () => {
 // ---------------------------------------------------------------- 入力行
 
 const LOAD_SPEC = [
-  { key: 'N', sym: 'N', name: '軸力（引張が正）', unit: 'kN', min: -RANGES.N, max: RANGES.N, step: 1 },
-  { key: 'M', sym: 'M', name: '曲げモーメント（両端）', unit: 'N·m', min: -RANGES.M, max: RANGES.M, step: 5 },
-  { key: 'T', sym: 'T', name: 'ねじりモーメント', unit: 'N·m', min: -RANGES.T, max: RANGES.T, step: 5 },
+  { key: 'N', tex: 'N', name: '軸力（引張が正）', unit: 'kN', min: -RANGES.N, max: RANGES.N, step: 1 },
+  { key: 'M', tex: 'M', name: '曲げモーメント（両端）', unit: 'N·m', min: -RANGES.M, max: RANGES.M, step: 5 },
+  { key: 'T', tex: 'T', name: 'ねじりモーメント', unit: 'N·m', min: -RANGES.T, max: RANGES.T, step: 5 },
 ];
 
 const GEOM_SPEC = [
-  { key: 'd', sym: 'd', name: '直径', unit: 'mm', min: 10, max: 120, step: 1 },
-  { key: 'L', sym: 'L', name: '長さ', unit: 'mm', min: 120, max: 800, step: 10 },
-  { key: 'sec', sym: 'x', name: '輪切りの位置', unit: '% of L', min: 4, max: 88, step: 1 },
+  { key: 'd', tex: 'd', name: '直径', unit: 'mm', min: 10, max: 120, step: 1 },
+  { key: 'L', tex: 'L', name: '長さ', unit: 'mm', min: 120, max: 800, step: 10 },
+  { key: 'sec', tex: 'x', name: '輪切りの位置', unit: '% of L', min: 4, max: 88, step: 1 },
 ];
 
 function makeRow(spec, get, set) {
@@ -52,7 +52,7 @@ function makeRow(spec, get, set) {
   row.className = 'field-row';
   row.innerHTML =
     `<div class="field-head">` +
-    `<span class="name"><em>${spec.sym}</em>${spec.name}</span>` +
+    `<span class="name"><span class="tex" data-tex="${spec.tex}"></span>${spec.name}</span>` +
     `<span class="unit">${spec.unit}</span></div>` +
     `<div class="field-inputs">` +
     `<input type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}">` +
@@ -152,21 +152,24 @@ function applyPreset(preset) {
   update();
 }
 
-function addPresetButtons(host, keys) {
+function addPresetButtons(host, keys, extraClass) {
+  const frag = document.createDocumentFragment();
   for (const preset of PRESETS) {
     if (keys && !keys.includes(preset.key)) continue;
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn';
+    b.className = 'btn' + (extraClass ? ' ' + extraClass : '');
     b.textContent = preset.label;
     b.addEventListener('click', () => applyPreset(preset));
-    host.appendChild(b);
+    frag.appendChild(b);
   }
+  // 「応力円が最大の点へ」より前に入れたいので先頭へ差し込む
+  host.insertBefore(frag, host.firstChild);
 }
 
 addPresetButtons($('presets'), null);
 // 丸棒パネルにも置く（スマホでは荷重パネルが画面外なので、よく使う2つだけ手元に）
-addPresetButtons($('presets-rod'), ['N', 'T']);
+addPresetButtons($('rod-actions'), ['N', 'T'], 'preset-mobile');
 
 // ---------------------------------------------------------------- φ
 
@@ -299,7 +302,9 @@ function update(opts = {}) {
     renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
     });
-    renderElement($('element-plot'), comps, an, phi);
+    renderElement($('element-plot'), comps, an, phi, {
+      fontScale: isCompact() ? 2.1 : 1,
+    });
     renderTable(comps, an, phi);
     renderColorbar();
     renderProbe(p, sec);
@@ -413,7 +418,16 @@ window.__mohr = { state, get rod() { return rod; }, update };
 
 // ---------------------------------------------------------------- 起動
 
+/** 地の文・ラベル中の [data-tex] を KaTeX で描く（記号の形を数式カードと揃えるため）。 */
+function renderTexSpans() {
+  if (typeof katex === 'undefined') return;
+  for (const el of document.querySelectorAll('.tex[data-tex]')) {
+    katex.render(el.dataset.tex, el, { throwOnError: false, displayMode: false });
+  }
+}
+
 function boot() {
+  renderTexSpans();
   renderStaticFormulas();
   update();
 }

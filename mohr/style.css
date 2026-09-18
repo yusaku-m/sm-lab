@@ -260,6 +260,11 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   font-size: 1.02rem;
   margin-right: 4px;
 }
+/* 地の文に埋める記号は KaTeX で描く（数式カードと形を揃えるため。
+   Georgia 斜体の φ は上の縦線が無い筆記体型なので形が揃わない） */
+.tex { display: inline-block; }
+.tex .katex { font-size: 1.05em; }
+.field-head .name .tex { margin-right: 3px; }
 .field-head .unit { color: var(--muted); font-size: 0.74rem; }
 .field-inputs { display: flex; align-items: center; gap: 10px; }
 .field-inputs input[type="range"] {
@@ -290,19 +295,25 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .check .short { display: none; }
 /* スマホ専用の表示（既定は隠す） */
 .phi-note { display: none; }
-#presets-rod { display: none; }
-.rotate-block { margin-top: 14px; }
-.element-wrap {
+.preset-mobile { display: none; }
+/* 回転インターフェース＋応力要素の図＋成分表。
+   PC: φが上に全幅で、下に「要素図 ｜ 成分表」
+   スマホ: 「要素図 ｜ φ」の横並び（成分表は非表示。下の媒体クエリ参照） */
+.rotate-area {
   display: grid;
   grid-template-columns: minmax(0, 232px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-areas:
+    "rot  rot"
+    "elem tbl";
+  column-gap: 16px;
+  row-gap: 10px;
   align-items: center;
   margin-top: 14px;
 }
-.element-wrap .plot { max-width: 250px; margin: 0 auto; }
-@media (max-width: 520px) {
-  .element-wrap { grid-template-columns: minmax(0, 1fr); }
-}
+.rotate-block { grid-area: rot; }
+.rotate-area .element-plot { grid-area: elem; max-width: 250px; margin: 0 auto; }
+.rotate-area .stress-table { grid-area: tbl; }
+.rotate-buttons { margin-top: 8px; margin-bottom: 0; }
 
 /* ---------- stress table ---------- */
 .stress-table {
@@ -369,31 +380,40 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   }
   .phi-note em { font-family: var(--display-font); font-style: italic; }
 
-  .mohr-card .toolbar-tight { margin: 0 0 6px; }
-  .plot-mohr svg { max-height: 23vh; max-height: 23svh; }
+  .plot-mohr svg { max-height: 25vh; max-height: 25svh; }
 
-  /* 回転インターフェースだけ残し、応力要素の図と成分表は省略 */
-  .rotate-block { margin-top: 8px; }
+  /* 応力要素の図を φ の左隣に並べる（成分表は省略。数値は円の中にある） */
+  .rotate-area {
+    grid-template-columns: 124px minmax(0, 1fr);
+    grid-template-areas: "elem rot";
+    column-gap: 10px;
+    margin-top: 8px;
+    align-items: center;
+  }
+  .rotate-area .element-plot { max-width: 124px; }
+  .rotate-area .stress-table { display: none; }
   .rotate-block .field-row { margin-bottom: 0; gap: 2px; }
-  .rotate-block .field-head .name { font-size: 0.78rem; }
+  .rotate-block .field-head .name { font-size: 0.76rem; }
+  .rotate-block .field-head .unit { font-size: 0.68rem; }
+  .rotate-block .field-inputs { gap: 7px; }
   .rotate-block .field-inputs input[type="range"] { height: 20px; }
-  .rotate-block .field-inputs input[type="number"] { flex: 0 0 4.4rem; padding: 4px 6px; font-size: 0.78rem; }
-  .rotate-block .toolbar { margin-top: 5px !important; gap: 6px; margin-bottom: 0; }
-  .rotate-block .toolbar .btn { font-size: 0.74rem; padding: 5px 10px; }
-  .element-wrap { display: none; }
+  .rotate-block .field-inputs input[type="number"] { flex: 0 0 3.6rem; padding: 4px 5px; font-size: 0.75rem; }
+  .rotate-buttons { margin-top: 5px; gap: 5px; }
+  .rotate-buttons .btn { font-size: 0.71rem; padding: 4px 8px; }
 
-  /* 丸棒パネル: 単純引張／単純ねじりを載せる */
-  #presets-rod { display: flex; margin: 6px 0 0; }
-  #presets-rod .btn { font-size: 0.74rem; padding: 5px 10px; }
+  /* 丸棒パネル: 単純引張／単純ねじりも手元に出す（荷重パネルは画面外なので） */
+  .preset-mobile { display: inline-flex; }
+  #rod-actions { margin: 6px 0 0; }
+  #rod-actions .btn { font-size: 0.74rem; padding: 5px 10px; }
   .rod-card .toolbar { flex-wrap: nowrap; gap: 8px; margin-bottom: 0; }
   .rod-card .toolbar .field-label { display: none; }
   .rod-card .toolbar select { flex: 1 1 auto; min-width: 0; font-size: 0.76rem; padding: 6px 10px; }
   .rod-card .toolbar .btn { flex: 0 0 auto; font-size: 0.76rem; padding: 6px 10px; }
 
   .viewport {
-    height: 23vh;
-    height: 23svh;
-    min-height: 158px;
+    height: 21vh;
+    height: 21svh;
+    min-height: 142px;
     margin-top: 7px;
   }
   /* 図が小さいので、カラーバーは棒の下側の余白へ、操作説明は上側へ回す

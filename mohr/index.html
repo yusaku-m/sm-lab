@@ -30,9 +30,11 @@
   <section class="card rod-card">
     <p class="kicker">Stress field</p>
     <h2>丸棒の応力分布</h2>
-    <p class="sub">棒の上をドラッグすると探触点が動きます。背景をドラッグすると視点が回ります。青い矢印＝軸力 <em>N</em>、橙の円弧＝曲げ <em>M</em>、緑の円弧＝ねじり <em>T</em>。黒いリングをドラッグすると輪切りの位置が動きます。</p>
+    <p class="sub">棒の上をドラッグすると探触点が動きます。背景をドラッグすると視点が回ります。青い矢印＝軸力 <span class="tex" data-tex="N"></span>、橙の円弧＝曲げ <span class="tex" data-tex="M"></span>、緑の円弧＝ねじり <span class="tex" data-tex="T"></span>。黒いリングをドラッグすると輪切りの位置が動きます。</p>
 
-    <div class="toolbar toolbar-tight" id="presets-rod"></div>
+    <div class="toolbar toolbar-tight" id="rod-actions">
+      <button class="btn btn-accent" id="pick-max" type="button">応力円が最大の点へ</button>
+    </div>
 
     <div class="toolbar">
       <label for="field" class="field-label">コンター</label>
@@ -57,35 +59,31 @@
   <section class="card mohr-card">
     <p class="kicker">Mohr&rsquo;s circle</p>
     <h2>モールの応力円</h2>
-    <p class="sub">探触点の応力状態。実線の円が x–θ 面（軸方向と周方向がつくる面）で、面を <em>φ</em> だけ回すと応力円上の点は 2<em>φ</em> だけ動きます。</p>
-    <p class="phi-note">面を <em>φ</em> 回すと、応力円上の点は 2<em>φ</em> 動きます。</p>
+    <p class="sub">探触点の応力状態。実線の円が x–θ 面（軸方向と周方向がつくる面）で、面を <span class="tex" data-tex="\phi"></span> だけ回すと応力円上の点は <span class="tex" data-tex="2\phi"></span> だけ動きます。</p>
+    <p class="phi-note">面を <span class="tex" data-tex="\phi"></span> 回すと、応力円上の点は <span class="tex" data-tex="2\phi"></span> 動きます。</p>
 
     <div class="checks" id="plane-checks"></div>
-    <div class="toolbar toolbar-tight">
-      <button class="btn btn-accent" id="pick-max" type="button">応力円が最大の点へ</button>
-    </div>
     <div class="plot plot-mohr" id="mohr-plot"></div>
 
-    <div class="rotate-block">
-      <div class="field-row">
-        <div class="field-head">
-          <span class="name"><em>φ</em> 断面の回転角</span>
-          <span class="unit">deg</span>
+    <div class="rotate-area">
+      <div class="rotate-block">
+        <div class="field-row">
+          <div class="field-head">
+            <span class="name"><span class="tex" data-tex="\phi"></span> 断面の回転角</span>
+            <span class="unit">deg</span>
+          </div>
+          <div class="field-inputs">
+            <input type="range" id="phi" min="-90" max="90" step="1" value="0">
+            <input type="number" id="phi-num" min="-90" max="90" step="1" value="0">
+          </div>
         </div>
-        <div class="field-inputs">
-          <input type="range" id="phi" min="-90" max="90" step="1" value="0">
-          <input type="number" id="phi-num" min="-90" max="90" step="1" value="0">
+        <div class="toolbar rotate-buttons">
+          <button class="btn" id="phi-principal" type="button">主応力の向きへ</button>
+          <button class="btn" id="phi-tmax" type="button">最大せん断の向きへ</button>
+          <button class="btn" id="phi-zero" type="button"><span class="tex" data-tex="\phi = 0"></span></button>
         </div>
       </div>
-      <div class="toolbar" style="margin-top:8px">
-        <button class="btn" id="phi-principal" type="button">主応力の向きへ</button>
-        <button class="btn" id="phi-tmax" type="button">最大せん断の向きへ</button>
-        <button class="btn" id="phi-zero" type="button">φ = 0</button>
-      </div>
-    </div>
-
-    <div class="element-wrap">
-      <div class="plot" id="element-plot"></div>
+      <div class="plot element-plot" id="element-plot"></div>
       <table class="stress-table" id="stress-table"></table>
     </div>
   </section>
