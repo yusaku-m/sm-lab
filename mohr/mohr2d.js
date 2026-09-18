@@ -19,6 +19,70 @@ function el(tag, attrs, text) {
   return n;
 }
 
+/** <text> の外形（SVG のユーザー座標）。DOM に入っていないと測れない。 */
+function textBox(t) {
+  const b = t.getBBox();
+  return { x: b.x, y: b.y, w: b.width, h: b.height };
+}
+
+function boxesHit(a, b, pad = 1) {
+  return (
+    a.x < b.x + b.w + pad && b.x < a.x + a.w + pad &&
+    a.y < b.y + b.h + pad && b.y < a.y + a.h + pad
+  );
+}
+
+/**
+ * ラベルの重なりを実測して縦にずらす。
+ *   data-fixed : 動かさない（軸名・目盛り）。当たり判定にだけ使う
+ *   data-nudge : ずらしてよい。小さい数字から順に置くので優先度になる
+ * どうしても空きが無いラベルは薄くする（消すと値が読めなくなるため）。
+ * 個別に位置を調整して回るより、こうして事後に解消するほうが、
+ * 荷重や軸範囲の組合せが変わっても破綻しない。
+ */
+/** ラベルが viewBox の左右から出ていたら、実測して内側へ寄せる。 */
+function clampLabelIntoView(t, W) {
+  const b = textBox(t);
+  let dx = 0;
+  if (b.x < 2) dx = 2 - b.x;
+  else if (b.x + b.w > W - 2) dx = W - 2 - (b.x + b.w);
+  if (dx) t.setAttribute('x', String(parseFloat(t.getAttribute('x')) + dx));
+}
+
+function avoidLabelOverlaps(svg, step, W) {
+  let placed;
+  try {
+    const fixed = [...svg.querySelectorAll('[data-fixed]')];
+    for (const t of fixed) clampLabelIntoView(t, W); // 動かさないラベルも左右だけは枠内へ
+    placed = fixed.map(textBox);
+  } catch (e) {
+    return; // getBBox が使えない環境（描画前など）では何もしない
+  }
+  const movable = [...svg.querySelectorAll('[data-nudge]')].sort(
+    (a, b) => Number(a.dataset.nudge) - Number(b.dataset.nudge)
+  );
+  const tries = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5];
+  for (const t of movable) {
+    clampLabelIntoView(t, W); // 先に左右を枠内へ入れてから、縦の重なりを解消する
+    const y0 = parseFloat(t.getAttribute('y'));
+    let ok = false;
+    for (const k of tries) {
+      t.setAttribute('y', String(y0 + k * step));
+      const b = textBox(t);
+      if (!placed.some((q) => boxesHit(q, b))) {
+        placed.push(b);
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) {
+      t.setAttribute('y', String(y0));
+      t.setAttribute('fill-opacity', '0.45');
+      placed.push(textBox(t));
+    }
+  }
+}
+
 function niceStep(span, target) {
   const raw = span / target;
   const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
@@ -68,7 +132,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   let H = 356;
   const ml = 26 + 20 * fs;
   const mr = 24;
-  const mt = 20;
+  const mt = 14 + 10 * fs; // τ の軸名をプロットの上に置くぶん
   const mb = 28 + 14 * fs;
   const pw = W - ml - mr;
   let ph = H - mt - mb;
@@ -151,7 +215,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     const x = X(v);
     grid.appendChild(el('line', { x1: x, y1: mt, x2: x, y2: mt + ph, stroke: '#1d29320f', 'stroke-width': 1 }));
     grid.appendChild(
-      el('text', { x, y: mt + ph + F(15), 'text-anchor': 'middle', 'font-size': F(10), fill: '#627078', 'font-family': font }, fmt(v, digits))
+      el('text', { x, y: mt + ph + F(15), 'text-anchor': 'middle', 'font-size': F(10), fill: '#627078', 'font-family': font, 'data-fixed': '1' }, fmt(v, digits))
     );
   }
   for (let v = -Math.floor(tMax / step) * step; v <= tMax; v += step) {
@@ -159,7 +223,9 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     const y = Y(v);
     if (y < mt || y > mt + ph) continue;
     grid.appendChild(el('line', { x1: ml, y1: y, x2: ml + pw, y2: y, stroke: '#1d29320f', 'stroke-width': 1 }));
-    grid.appendChild(el('text', { x: ml - 7, y: y + F(3.5), 'text-anchor': 'end', 'font-size': F(10), fill: '#627078', 'font-family': font }, fmt(v, digits)));
+    // 端の目盛りは枠の内側へ寄せる（角で σ 側の目盛りや軸名と重なるため）
+    const ty = Math.min(Math.max(y + F(3.5), mt + F(9)), mt + ph - F(1));
+    grid.appendChild(el('text', { x: ml - 7, y: ty, 'text-anchor': 'end', 'font-size': F(10), fill: '#627078', 'font-family': font, 'data-fixed': '1' }, fmt(v, digits)));
   }
   svg.appendChild(grid);
 
@@ -169,8 +235,10 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   if (X(0) >= ml && X(0) <= ml + pw) {
     axes.appendChild(el('line', { x1: X(0), y1: mt, x2: X(0), y2: mt + ph, stroke: '#1d293255', 'stroke-width': 1.2 }));
   }
-  axes.appendChild(el('text', { x: ml + pw, y: Y(0) - F(8), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic' }, 'σ  [MPa]'));
-  axes.appendChild(el('text', { x: ml - 6, y: mt + F(4), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic' }, 'τ'));
+  axes.appendChild(el('text', { x: ml + pw, y: Y(0) - F(8), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'σ  [MPa]'));
+  // τ の軸名はプロットの上へ左寄せで置く。左マージンに置くと τ の目盛りと同じ列に
+  // なって重なり、右寄せにすると枠の外へはみ出すため。
+  axes.appendChild(el('text', { x: ml, y: mt - F(6), 'text-anchor': 'start', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'τ  [MPa]'));
   svg.appendChild(axes);
 
   // --- 円（主円 xy は最後に描いて前面に）
@@ -192,17 +260,24 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
 
   // --- 主応力の位置
   const pg = el('g', {});
-  const labelled = [['σ₁', an.s1], ['σ₂', an.s2], ['σ₃', an.s3]];
-  const used = [];
-  const lh = F(13);
-  labelled.forEach(([name, v]) => {
-    if (!inPlot(v, 0)) return; // 軸を固定していて範囲外なら描かない
-    const x = X(v);
-    let y = Y(0) + F(24);
-    while (used.some((u) => Math.abs(u.x - x) < F(42) && Math.abs(u.y - y) < lh)) y += lh + 1;
-    used.push({ x, y });
+  // 値が同じものはまとめて 1 つのラベルにする（σ₂=σ₃=0.0 のような場合）
+  const groups = [];
+  for (const [name, v] of [['σ₁', an.s1], ['σ₂', an.s2], ['σ₃', an.s3]]) {
+    if (!inPlot(v, 0)) continue; // 軸を固定していて範囲外なら描かない
+    const g = groups.find((q) => Math.abs(q.v - v) < 0.05);
+    if (g) g.names.push(name);
+    else groups.push({ v, names: [name] });
+  }
+  groups.forEach((gp, i) => {
+    const x = X(gp.v);
     pg.appendChild(el('line', { x1: x, y1: Y(0) - 5, x2: x, y2: Y(0) + 5, stroke: '#1d2932', 'stroke-width': 1.4 }));
-    pg.appendChild(el('text', { x: clampX(x), y, 'text-anchor': 'middle', 'font-size': F(10.5), fill: '#1d2932', 'font-family': font }, `${name}=${fmt(v)}`));
+    pg.appendChild(
+      el('text', {
+        x: clampX(x), y: Y(0) + F(24), 'text-anchor': 'middle',
+        'font-size': F(10.5), fill: '#1d2932', 'font-family': font,
+        'data-nudge': String(10 + i),
+      }, `${gp.names.join('=')}=${fmt(gp.v)}`)
+    );
   });
   svg.appendChild(pg);
 
@@ -244,6 +319,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
           x: X(main.c) + (rr + F(12)) * Math.cos((a0 + a1) / 2),
           y: Y(0) - (rr + F(12)) * Math.sin((a0 + a1) / 2) + F(3.5),
           'text-anchor': 'middle', 'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
+          'data-nudge': '20',
         }, `2φ=${((2 * phi * 180) / Math.PI).toFixed(0)}°`)
       );
     }
@@ -251,8 +327,8 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     // 直径（2つの面を結ぶ弦）
     g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
 
-    for (const [pt, name] of [[A, 'x′面'], [B, 'y′面']]) {
-      if (!inPlot(pt.s, pt.t)) continue;
+    [[A, 'X面', 1], [B, 'Y面', 2]].forEach(([pt, name, prio]) => {
+      if (!inPlot(pt.s, pt.t)) return;
       const px = X(pt.s);
       const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
       g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
@@ -262,9 +338,10 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
           y: Y(pt.t) + (pt.t >= 0 ? -F(8) : F(14)),
           'text-anchor': toRight ? 'start' : 'end',
           'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
+          'data-nudge': String(prio),
         }, `${name} (${fmt(pt.s)}, ${fmt(pt.t)})`)
       );
-    }
+    });
     svg.appendChild(g);
     svg.appendChild(gLab);
   }
@@ -272,17 +349,23 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   // --- 図の中に主要な数値を書いておく（スマホでは成分表を省略するため）
   svg.appendChild(
     el('text', {
-      x: ml, y: H - 4, 'font-size': F(10.5), fill: '#627078', 'font-family': font,
-    }, `τmax = ${fmt(an.tmax)} ／ σeq = ${fmt(an.vm)} ／ σ₁ の向き θp = ${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}°`)
+      // まとめ行は横に長いので、他のラベルほど大きくしない（スマホで枠から出るため）
+      x: ml, y: H - 4, 'font-size': Math.min(F(10.5), 12.2), fill: '#627078', 'font-family': font, 'data-fixed': '1',
+    }, `τmax = ${fmt(an.tmax)} ／ σeq = ${fmt(an.vm)} ／ ${fs > 1.2 ? '' : 'σ₁ の向き '}θp = ${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}°`)
   );
 
   host.replaceChildren(svg);
+  // 挿入してからでないと getBBox で実測できないので、ここで重なりを解消する
+  avoidLabelOverlaps(svg, F(13), W);
   return { sMin, sMax, tMax };
 }
 
 // ------------------------------------------------------------ 応力要素の図
 
-/** φ だけ回した微小要素に働く応力を描く。 */
+/**
+ * φ だけ回した微小要素に働く応力を描く。
+ * 回した座標系は講義資料に合わせて大文字 X–Y（破線のガイドが元の x–y 軸）。
+ */
 export function renderElement(host, comps, an, phi, opts = {}) {
   // fontScale: スマホでは小さく縮小表示されるので、文字だけ大きく描く
   // （そのぶんラベルがはみ出さないよう viewBox も少し広げる）
@@ -322,9 +405,9 @@ export function renderElement(host, comps, an, phi, opts = {}) {
   const g = el('g', {});
   // 垂直応力（面の外向き法線方向）
   const faces = [
-    { dir: n, val: rot.sn, color: '#bd442c', label: 'σx′' },
+    { dir: n, val: rot.sn, color: '#bd442c', label: 'σX' },
     { dir: [-n[0], -n[1]], val: rot.sn, color: '#bd442c' },
-    { dir: t, val: rot.sn90, color: '#245b8d', label: 'σy′' },
+    { dir: t, val: rot.sn90, color: '#245b8d', label: 'σY' },
     { dir: [-t[0], -t[1]], val: rot.sn90, color: '#245b8d' },
   ];
   for (const f of faces) {
@@ -364,7 +447,7 @@ export function renderElement(host, comps, an, phi, opts = {}) {
         x: c + t[0] * (h + 20) + n[0] * 40,
         y: c + t[1] * (h + 20) + n[1] * 40 + 4,
         'text-anchor': 'middle', 'font-size': F(12), fill: '#2f8f6f', 'font-family': font,
-      }, 'τ')
+      }, 'τXY')
     );
   }
   svg.appendChild(g);

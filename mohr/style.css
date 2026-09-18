@@ -429,7 +429,8 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   overflow: hidden;
   line-height: 0;
 }
-.share-qr svg { display: block; width: 100%; height: auto; }
+.share-qr svg,
+.share-qr img { display: block; width: 100%; height: auto; }
 .share-hint {
   margin: 10px 0 0;
   font-size: 0.74rem;

@@ -80,6 +80,8 @@ function applyHash(hash) {
   }
   state.probe.r = num('pr', 0, state.geom.d / 2, state.geom.d / 2);
   state.probe.a = num('pa', -360, 360, state.probe.a);
+  // ax が無いハッシュは「自動」を意味する（付いていた設定を持ち越さない）
+  state.axis = { ...state.axis, mode: 'auto' };
   if (q.has('ax')) {
     const v = q.get('ax').split(',').map(parseFloat);
     if (v.length === 3 && v.every(Number.isFinite)) {
@@ -488,7 +490,30 @@ function shareUrl() {
   return location.origin + location.pathname + '#' + buildHash();
 }
 
-function renderShare() {
+const QR_PX = 224; // 表示サイズ
+const QR_SCALE = 3; // コピー・保存用に 3 倍の解像度で焼く（スライドに貼っても粗くならない）
+
+/** SVG 文字列を PNG の data URL に変換する。 */
+function svgToPngDataUrl(svgText, px) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      const cv = document.createElement('canvas');
+      cv.width = px;
+      cv.height = px;
+      const g = cv.getContext('2d');
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, px, px);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(im, 0, 0, px, px);
+      resolve(cv.toDataURL('image/png'));
+    };
+    im.onerror = () => reject(new Error('SVG を画像として読めませんでした'));
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+  });
+}
+
+async function renderShare() {
   const url = shareUrl();
   $('share-url').value = url;
   const host = $('share-qr');
@@ -499,16 +524,31 @@ function renderShare() {
   // padding はモジュール単位のクワイエットゾーン。QR 規格は 4 モジュール必要で、
   // ここを詰めるとカメラを向けても読めない（2026-09-18 に実機で読めず判明）。
   // 白地・黒でコントラストも最大にしておく。
-  host.innerHTML = new QRCode({
+  const svg = new QRCode({
     content: url,
     padding: 4,
-    width: 224,
-    height: 224,
+    width: QR_PX,
+    height: QR_PX,
     color: '#000000',
     background: '#ffffff',
     ecl: 'M',
     join: true,
   }).svg();
+
+  // インライン SVG だと右クリックでブラウザの画像メニュー（画像をコピー/保存）が
+  // 出ないので、PNG に焼いて <img> として置く。
+  try {
+    const src = await svgToPngDataUrl(svg, QR_PX * QR_SCALE);
+    const img = document.createElement('img');
+    img.src = src;
+    img.width = QR_PX;
+    img.height = QR_PX;
+    img.alt = 'この設定を開く QR コード';
+    img.title = '右クリック（スマホは長押し）でコピー・保存できます';
+    host.replaceChildren(img);
+  } catch (e) {
+    host.innerHTML = svg; // 変換できない環境では SVG をそのまま出す
+  }
 }
 
 $('share-toggle').addEventListener('click', () => {
@@ -613,8 +653,8 @@ function renderTable(comps, an, phi) {
     row('σeq von Mises', an.vm) +
     `<tr><th>主軸の向き θp</th><td>${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}<span class="u">deg</span></td></tr>` +
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
-    row(`σ(φ=${state.phi.toFixed(0)}°)`, rot.sn) +
-    row(`τ(φ=${state.phi.toFixed(0)}°)`, rot.tau);
+    row(`σX（φ=${state.phi.toFixed(0)}°）`, rot.sn) +
+    row(`τXY（φ=${state.phi.toFixed(0)}°）`, rot.tau);
 }
 
 // ---------------------------------------------------------------- 数式
