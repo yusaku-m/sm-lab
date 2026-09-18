@@ -97,22 +97,6 @@
     <div id="load-fields"></div>
     <hr class="divider">
     <div id="geom-fields"></div>
-
-    <hr class="divider">
-    <div class="share">
-      <div class="share-head">
-        <span class="share-title">この設定を共有</span>
-        <button class="btn" id="share-toggle" type="button">URL と QR を表示</button>
-      </div>
-      <div class="share-body" id="share-body" hidden>
-        <div class="share-row">
-          <input id="share-url" type="text" readonly aria-label="共有URL">
-          <button class="btn btn-accent" id="share-copy" type="button">コピー</button>
-        </div>
-        <div class="share-qr" id="share-qr"></div>
-        <p class="share-hint">読み込むと、いまの荷重・寸法・探触点・回転角ごとこのページが開きます。アドレスバーのURLも常に今の設定を指しています。</p>
-      </div>
-    </div>
   </section>
 
   <!-- ------------------------------------------------ 式 -->
@@ -140,6 +124,18 @@
   </section>
 
 </main>
+
+<footer class="site-foot">
+  <button class="btn btn-accent" id="share-toggle" type="button" aria-expanded="false" aria-controls="share-body">現状QR</button>
+  <div class="share-body" id="share-body" hidden>
+    <div class="share-row">
+      <input id="share-url" type="text" readonly aria-label="共有URL">
+      <button class="btn" id="share-copy" type="button">コピー</button>
+    </div>
+    <div class="share-qr" id="share-qr"></div>
+    <p class="share-hint">この QR / URL を読み込むと、いまの荷重・寸法・コンター・探触点・回転角ごとこのページが開きます。アドレスバーの URL も常に今の設定を指しているので、そのままコピーしても同じです。</p>
+  </div>
+</footer>
 
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/qrcode-svg@1.1.0/dist/qrcode.min.js"></script>

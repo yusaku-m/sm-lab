@@ -354,16 +354,25 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .notes-card p { font-size: 0.82rem; line-height: 1.8; color: var(--muted); }
 .katex { font-size: 1em; }
 
-/* ---------- 共有（URL / QR） ---------- */
-.share-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+/* ---------- 共有（URL / QR）。ページ最下部の footer に置いてある ---------- */
+.site-foot {
+  max-width: 1440px;
+  margin: clamp(14px, 1.6vw, 22px) auto 0;
+  padding: 0 4px;
 }
-.share-title { font-size: 0.83rem; }
-.share-body { margin-top: 12px; }
+.site-foot .btn[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: #fce5dc;
+}
+.share-body {
+  margin-top: 12px;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: clamp(16px, 2vw, 24px);
+  padding: clamp(14px, 2vw, 22px);
+  box-shadow: 0 24px 70px #1c242c14;
+}
 .share-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .share-row input {
   flex: 1 1 auto;

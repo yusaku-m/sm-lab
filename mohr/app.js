@@ -433,8 +433,12 @@ function renderShare() {
 $('share-toggle').addEventListener('click', () => {
   const body = $('share-body');
   body.hidden = !body.hidden;
-  $('share-toggle').textContent = body.hidden ? 'URL と QR を表示' : '閉じる';
-  if (!body.hidden) renderShare();
+  // ラベルは「現状QR」のまま。開いているかは aria-expanded と見た目（.btn[aria-expanded]）で示す
+  $('share-toggle').setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
+  if (!body.hidden) {
+    renderShare();
+    body.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 });
 
 $('share-copy').addEventListener('click', async () => {
