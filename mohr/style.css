@@ -329,6 +329,12 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 
 /* ---------- mohr plot ---------- */
 .plot { width: 100%; }
+/* 応力円の直径は掴んで回せる（PC のみ。スマホはスクロールを優先） */
+.plot-mohr { cursor: grab; }
+.plot-mohr.grabbing { cursor: grabbing; }
+@media (min-width: 761px) {
+  .plot-mohr { touch-action: none; }
+}
 .plot svg { display: block; width: 100%; height: auto; overflow: visible; }
 .check .short, .btn .short { display: none; }
 /* スマホ専用の表示（既定は隠す） */

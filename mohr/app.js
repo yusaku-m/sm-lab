@@ -319,7 +319,7 @@ function setPhi(deg) {
   state.phi = Math.min(90, Math.max(-90, deg));
   phiRange.value = state.phi;
   phiNum.value = String(Math.round(state.phi * 10) / 10);
-  update();
+  update({ skipRod: true }); // φ は 3D 図に影響しないので作り直さない
 }
 phiRange.addEventListener('input', () => setPhi(parseFloat(phiRange.value)));
 phiNum.addEventListener('input', () => {
@@ -327,9 +327,50 @@ phiNum.addEventListener('input', () => {
   if (Number.isFinite(v)) {
     state.phi = Math.min(90, Math.max(-90, v));
     phiRange.value = state.phi;
-    update();
+    update({ skipRod: true });
   }
 });
+// --- 応力円の直径を掴んで回す
+// SVG は update のたびに作り直されるので、掴んだ時点の要素ではなく
+// mohrDrag（円の中心・半径・基準角）を見て角度を計算する。
+function svgUserPoint(ev) {
+  const svg = $('mohr-plot').querySelector('svg');
+  if (!svg) return null;
+  const m = svg.getScreenCTM();
+  if (!m) return null;
+  const p = new DOMPoint(ev.clientX, ev.clientY);
+  return p.matrixTransform(m.inverse());
+}
+
+$('mohr-plot').addEventListener('pointerdown', (ev) => {
+  // スマホは画面スクロールを邪魔しないよう対象外（φ はスライダーで変えられる）
+  if (!mohrDrag || (ev.pointerType === 'touch' && isCompact())) return;
+  const q = svgUserPoint(ev);
+  if (!q) return;
+  const dist = Math.hypot(q.x - mohrDrag.cx, q.y - mohrDrag.cy);
+  // 円周のまわりに十分な掴み代をとる（小さい円でも掴めるように下限を設ける）
+  if (Math.abs(dist - mohrDrag.r) > Math.max(22, mohrDrag.r * 0.45)) return;
+  ev.preventDefault();
+  $('mohr-plot').classList.add('grabbing');
+
+  const toPhi = (e) => {
+    const t = svgUserPoint(e);
+    if (!t) return;
+    const a = Math.atan2(t.y - mohrDrag.cy, t.x - mohrDrag.cx);
+    setPhi(wrap90(((mohrDrag.alpha0 - a) * 180) / Math.PI / 2));
+  };
+  toPhi(ev);
+  const up = () => {
+    $('mohr-plot').classList.remove('grabbing');
+    window.removeEventListener('pointermove', toPhi);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+  };
+  window.addEventListener('pointermove', toPhi);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+});
+
 $('phi-zero').addEventListener('click', () => setPhi(0));
 $('phi-principal').addEventListener('click', () => setPhi(wrap90((currentComps().thetaP * 180) / Math.PI)));
 $('phi-tmax').addEventListener('click', () => setPhi(wrap90((currentComps().thetaP * 180) / Math.PI + 45)));
@@ -350,6 +391,8 @@ let hashTimer = 0;
 let lastHash = '';
 // 直前に実際に描いた軸範囲（「いまの範囲を取り込む」で使う）
 let shownAxis = { sMin: -60, sMax: 120, tMax: 60 };
+// 直前に描いた応力円の幾何（直径を掴んで回すのに使う）
+let mohrDrag = null;
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -439,7 +482,7 @@ function update(opts = {}) {
   if (updating) return;
   updating = true;
   try {
-    if (rod && !opts.fromScene) {
+    if (rod && !opts.fromScene && !opts.skipRod) {
       rod.set({
         geom: state.geom,
         loads: state.loads,
@@ -455,10 +498,12 @@ function update(opts = {}) {
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
 
-    shownAxis = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
+    const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
       axis: state.axis,
     });
+    shownAxis = drawn;
+    mohrDrag = drawn.drag;
     renderElement($('element-plot'), comps, an, phi, {
       fontScale: isCompact() ? 2.1 : 1,
     });

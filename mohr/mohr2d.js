@@ -197,6 +197,18 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   sMax = shownS[1];
   tMax = shownT;
 
+  // 直径を掴んで回すのに使う幾何（SVG のユーザー座標）。φ に依存しない量だけを返す。
+  const mainC = circles.find((c) => c.plane.key === 'xy');
+  const drag = visible.xy && mainC && mainC.r * k > 2
+    ? {
+        cx: X(mainC.c),
+        cy: Y(0),
+        r: mainC.r * k,
+        // φ=0 のときの X 面の点の画面角。φ を増やすと点はここから -2φ 動く
+        alpha0: Math.atan2(Y(comps.txy) - Y(0), X(comps.sx) - X(mainC.c)),
+      }
+    : null;
+
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'モールの応力円' });
   const font = 'Inter, "Noto Sans JP", sans-serif';
   const serif = 'Georgia, serif';
@@ -364,7 +376,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   host.replaceChildren(svg);
   // 挿入してからでないと getBBox で実測できないので、ここで重なりを解消する
   avoidLabelOverlaps(svg, F(13), W);
-  return { sMin, sMax, tMax };
+  return { sMin, sMax, tMax, drag };
 }
 
 // ------------------------------------------------------------ 応力要素の図
