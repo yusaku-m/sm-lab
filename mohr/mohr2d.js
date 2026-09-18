@@ -184,7 +184,9 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const cx = ml + pw / 2;
   const cy = mt + ph / 2;
   const X = (s) => cx + (s - sMid) * k;
-  const Y = (t) => cy - t * k;
+  // τ は「下向きが正」。こうすると、面を φ 回したとき円上の点が同じ向き（反時計まわり）に
+  // 2φ 動いて見える。値そのものは変えていないので、ラベルや成分表の数字は τ のまま。
+  const Y = (t) => cy + t * k;
   const clampX = (x) => Math.min(ml + pw, Math.max(ml, x));
   // 円が円に見えるよう縦横のスケールは同じにしているので、指定した範囲より
   // 片方が広く映る。目盛りと「取り込む」ボタンは実際に映る範囲を使う。
@@ -236,9 +238,9 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     axes.appendChild(el('line', { x1: X(0), y1: mt, x2: X(0), y2: mt + ph, stroke: '#1d293255', 'stroke-width': 1.2 }));
   }
   axes.appendChild(el('text', { x: ml + pw, y: Y(0) - F(8), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'σ  [MPa]'));
-  // τ の軸名はプロットの上へ左寄せで置く。左マージンに置くと τ の目盛りと同じ列に
-  // なって重なり、右寄せにすると枠の外へはみ出すため。
-  axes.appendChild(el('text', { x: ml, y: mt - F(6), 'text-anchor': 'start', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'τ  [MPa]'));
+  // τ の軸名は正の側（下）の左端へ。左マージンに置くと τ の目盛りと同じ列で重なり、
+  // 上に置くと正の向きと逆の位置に名前があることになって紛らわしい。
+  axes.appendChild(el('text', { x: ml + 4, y: mt + ph - F(5), 'text-anchor': 'start', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'τ  [MPa] ↓正'));
   svg.appendChild(axes);
 
   // --- 円（主円 xy は最後に描いて前面に）
@@ -303,11 +305,16 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     // 2φ の円弧
     if (Math.abs(phi) > 1e-4 && main.r * k > 10) {
       const rr = Math.min(main.r * k * 0.42, 34);
-      const a0 = Math.atan2(comps.txy, comps.sx - main.c);
-      const a1 = Math.atan2(A.t, A.s - main.c);
-      const sweep = phi > 0 ? 1 : 0; // 画面上では 2φ は φ と逆まわりに見える
-      const p0 = [X(main.c) + rr * Math.cos(a0), Y(0) - rr * Math.sin(a0)];
-      const p1 = [X(main.c) + rr * Math.cos(a1), Y(0) - rr * Math.sin(a1)];
+      // 画面上の角度（y 下向き）で組み立てる。縦軸の向きに依存しない。
+      const ang = (s, t) => Math.atan2(Y(t) - Y(0), X(s) - X(main.c));
+      const a0 = ang(comps.sx, comps.txy);
+      let da = ang(A.s, A.t) - a0;
+      while (da > Math.PI) da -= 2 * Math.PI;
+      while (da < -Math.PI) da += 2 * Math.PI;
+      const a1 = a0 + da;
+      const sweep = da > 0 ? 1 : 0; // 画面座標では角度が増える向き＝時計まわり
+      const p0 = [X(main.c) + rr * Math.cos(a0), Y(0) + rr * Math.sin(a0)];
+      const p1 = [X(main.c) + rr * Math.cos(a1), Y(0) + rr * Math.sin(a1)];
       g.appendChild(
         el('path', {
           d: `M ${p0[0]} ${p0[1]} A ${rr} ${rr} 0 0 ${sweep} ${p1[0]} ${p1[1]}`,
@@ -316,8 +323,8 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
       );
       g.appendChild(
         el('text', {
-          x: X(main.c) + (rr + F(12)) * Math.cos((a0 + a1) / 2),
-          y: Y(0) - (rr + F(12)) * Math.sin((a0 + a1) / 2) + F(3.5),
+          x: X(main.c) + (rr + F(12)) * Math.cos(a0 + da / 2),
+          y: Y(0) + (rr + F(12)) * Math.sin(a0 + da / 2) + F(3.5),
           'text-anchor': 'middle', 'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
           'data-nudge': '20',
         }, `2φ=${((2 * phi * 180) / Math.PI).toFixed(0)}°`)
@@ -335,7 +342,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
       gLab.appendChild(
         el('text', {
           x: px + (toRight ? 9 : -9),
-          y: Y(pt.t) + (pt.t >= 0 ? -F(8) : F(14)),
+          y: Y(pt.t) + (Y(pt.t) <= Y(0) ? -F(8) : F(14)),
           'text-anchor': toRight ? 'start' : 'end',
           'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
           'data-nudge': String(prio),
