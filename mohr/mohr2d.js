@@ -2,7 +2,7 @@
 // 3D 表示（rod3d.js）とは独立しており、応力成分 {sx, sy, sz, txy} と
 // 回転角 φ だけを受け取って描く。
 
-import { rotated, fmt } from './stress.js';
+import { rotated, principalAngle, fmt } from './stress.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -59,10 +59,17 @@ function arrow(g, x1, y1, x2, y2, color, width = 1.6, head = 6) {
  * visible : {xy:bool, yz:bool, zx:bool}
  * phi     : 回転角 [rad]
  */
-export function renderCircles(host, comps, an, visible, phi) {
+export function renderCircles(host, comps, an, visible, phi, opts = {}) {
+  // fontScale: スマホでは SVG 全体が縮小表示されるので、文字だけ大きめに描く
+  const fs = opts.fontScale || 1;
+  const F = (v) => +(v * fs).toFixed(2);
+
   const W = 470;
   const H = 356;
-  const ml = 46, mr = 24, mt = 20, mb = 42;
+  const ml = 26 + 20 * fs;
+  const mr = 24;
+  const mt = 20;
+  const mb = 28 + 14 * fs;
   const pw = W - ml - mr;
   const ph = H - mt - mb;
 
@@ -94,18 +101,21 @@ export function renderCircles(host, comps, an, visible, phi) {
   const cy = mt + ph / 2;
   const X = (s) => cx + (s - sMid) * k;
   const Y = (t) => cy - t * k;
+  const clampX = (x) => Math.min(ml + pw, Math.max(ml, x));
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'モールの応力円' });
   const font = 'Inter, "Noto Sans JP", sans-serif';
+  const serif = 'Georgia, serif';
 
   // --- 目盛り
   const step = niceStep(sMax - sMin, 6);
+  const digits = Math.abs(step) < 1 ? 2 : 0;
   const grid = el('g', {});
   for (let v = Math.ceil(sMin / step) * step; v <= sMax; v += step) {
     const x = X(v);
     grid.appendChild(el('line', { x1: x, y1: mt, x2: x, y2: mt + ph, stroke: '#1d29320f', 'stroke-width': 1 }));
     grid.appendChild(
-      el('text', { x, y: mt + ph + 15, 'text-anchor': 'middle', 'font-size': 10, fill: '#627078', 'font-family': font }, fmt(v, Math.abs(step) < 1 ? 2 : 0))
+      el('text', { x, y: mt + ph + F(15), 'text-anchor': 'middle', 'font-size': F(10), fill: '#627078', 'font-family': font }, fmt(v, digits))
     );
   }
   for (let v = -Math.floor(tMax / step) * step; v <= tMax; v += step) {
@@ -113,7 +123,7 @@ export function renderCircles(host, comps, an, visible, phi) {
     const y = Y(v);
     if (y < mt || y > mt + ph) continue;
     grid.appendChild(el('line', { x1: ml, y1: y, x2: ml + pw, y2: y, stroke: '#1d29320f', 'stroke-width': 1 }));
-    grid.appendChild(el('text', { x: ml - 7, y: y + 3.5, 'text-anchor': 'end', 'font-size': 10, fill: '#627078', 'font-family': font }, fmt(v, Math.abs(step) < 1 ? 2 : 0)));
+    grid.appendChild(el('text', { x: ml - 7, y: y + F(3.5), 'text-anchor': 'end', 'font-size': F(10), fill: '#627078', 'font-family': font }, fmt(v, digits)));
   }
   svg.appendChild(grid);
 
@@ -123,8 +133,8 @@ export function renderCircles(host, comps, an, visible, phi) {
   if (X(0) >= ml && X(0) <= ml + pw) {
     axes.appendChild(el('line', { x1: X(0), y1: mt, x2: X(0), y2: mt + ph, stroke: '#1d293255', 'stroke-width': 1.2 }));
   }
-  axes.appendChild(el('text', { x: ml + pw, y: Y(0) - 8, 'text-anchor': 'end', 'font-size': 12, fill: '#1d2932', 'font-family': 'Georgia, serif', 'font-style': 'italic' }, 'σ  [MPa]'));
-  axes.appendChild(el('text', { x: ml - 6, y: mt + 4, 'text-anchor': 'end', 'font-size': 12, fill: '#1d2932', 'font-family': 'Georgia, serif', 'font-style': 'italic' }, 'τ'));
+  axes.appendChild(el('text', { x: ml + pw, y: Y(0) - F(8), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic' }, 'σ  [MPa]'));
+  axes.appendChild(el('text', { x: ml - 6, y: mt + F(4), 'text-anchor': 'end', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic' }, 'τ'));
   svg.appendChild(axes);
 
   // --- 円（主円 xy は最後に描いて前面に）
@@ -146,19 +156,16 @@ export function renderCircles(host, comps, an, visible, phi) {
 
   // --- 主応力の位置
   const pg = el('g', {});
-  const labelled = [
-    ['σ₁', an.s1],
-    ['σ₂', an.s2],
-    ['σ₃', an.s3],
-  ];
-  const usedX = [];
+  const labelled = [['σ₁', an.s1], ['σ₂', an.s2], ['σ₃', an.s3]];
+  const used = [];
+  const lh = F(13);
   labelled.forEach(([name, v]) => {
     const x = X(v);
-    let y = Y(0) + 26;
-    while (usedX.some((u) => Math.abs(u.x - x) < 42 && Math.abs(u.y - y) < 13)) y += 14;
-    usedX.push({ x, y });
+    let y = Y(0) + F(24);
+    while (used.some((u) => Math.abs(u.x - x) < F(42) && Math.abs(u.y - y) < lh)) y += lh + 1;
+    used.push({ x, y });
     pg.appendChild(el('line', { x1: x, y1: Y(0) - 5, x2: x, y2: Y(0) + 5, stroke: '#1d2932', 'stroke-width': 1.4 }));
-    pg.appendChild(el('text', { x, y, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#1d2932', 'font-family': font }, `${name}=${fmt(v)}`));
+    pg.appendChild(el('text', { x: clampX(x), y, 'text-anchor': 'middle', 'font-size': F(10.5), fill: '#1d2932', 'font-family': font }, `${name}=${fmt(v)}`));
   });
   svg.appendChild(pg);
 
@@ -179,22 +186,21 @@ export function renderCircles(host, comps, an, visible, phi) {
       const rr = Math.min(main.r * k * 0.42, 34);
       const a0 = Math.atan2(comps.txy, comps.sx - main.c);
       const a1 = Math.atan2(A.t, A.s - main.c);
-      const large = 0;
       const sweep = phi > 0 ? 1 : 0; // 画面上では 2φ は φ と逆まわりに見える
       const p0 = [X(main.c) + rr * Math.cos(a0), Y(0) - rr * Math.sin(a0)];
       const p1 = [X(main.c) + rr * Math.cos(a1), Y(0) - rr * Math.sin(a1)];
       g.appendChild(
         el('path', {
-          d: `M ${p0[0]} ${p0[1]} A ${rr} ${rr} 0 ${large} ${sweep} ${p1[0]} ${p1[1]}`,
+          d: `M ${p0[0]} ${p0[1]} A ${rr} ${rr} 0 0 ${sweep} ${p1[0]} ${p1[1]}`,
           fill: 'none', stroke: '#bd442c', 'stroke-width': 1.2, 'stroke-dasharray': '3 3',
         })
       );
       g.appendChild(
         el('text', {
-          x: X(main.c) + (rr + 12) * Math.cos((a0 + a1) / 2),
-          y: Y(0) - (rr + 12) * Math.sin((a0 + a1) / 2) + 3.5,
-          'text-anchor': 'middle', 'font-size': 10.5, fill: '#bd442c', 'font-family': font,
-        }, `2φ=${(2 * phi * 180 / Math.PI).toFixed(0)}°`)
+          x: X(main.c) + (rr + F(12)) * Math.cos((a0 + a1) / 2),
+          y: Y(0) - (rr + F(12)) * Math.sin((a0 + a1) / 2) + F(3.5),
+          'text-anchor': 'middle', 'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
+        }, `2φ=${((2 * phi * 180) / Math.PI).toFixed(0)}°`)
       );
     }
 
@@ -202,16 +208,27 @@ export function renderCircles(host, comps, an, visible, phi) {
     g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
 
     for (const [pt, name] of [[A, 'x′面'], [B, 'θ′面']]) {
-      g.appendChild(el('circle', { cx: X(pt.s), cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
+      const px = X(pt.s);
+      const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
+      g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
       g.appendChild(
         el('text', {
-          x: X(pt.s) + 9, y: Y(pt.t) + (pt.t >= 0 ? -8 : 15),
-          'font-size': 10.5, fill: '#bd442c', 'font-family': font,
+          x: px + (toRight ? 9 : -9),
+          y: Y(pt.t) + (pt.t >= 0 ? -F(8) : F(14)),
+          'text-anchor': toRight ? 'start' : 'end',
+          'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
         }, `${name} (${fmt(pt.s)}, ${fmt(pt.t)})`)
       );
     }
     svg.appendChild(g);
   }
+
+  // --- 図の中に主要な数値を書いておく（スマホでは成分表を省略するため）
+  svg.appendChild(
+    el('text', {
+      x: ml, y: H - 4, 'font-size': F(10.5), fill: '#627078', 'font-family': font,
+    }, `τmax = ${fmt(an.tmax)} ／ σeq = ${fmt(an.vm)} ／ σ₁ の向き θp = ${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}°`)
+  );
 
   host.replaceChildren(svg);
 }

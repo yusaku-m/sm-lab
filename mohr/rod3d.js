@@ -187,6 +187,9 @@ export class RodScene {
     this.fieldKey = 'sx';
     this.sectionT = 0.28; // 0..1（棒の左端からの相対位置）
     this.probe = null; // {x, r, a}
+    // 図に収めるときの余白。ビューが小さいとカラーバー等のオーバーレイと
+    // 棒が重なるので、スマホでは呼び出し側から大きめの値を入れる。
+    this.fitMargin = 1.06;
     this.range = { min: 0, max: 0 };
 
     this._initThree();
@@ -630,7 +633,7 @@ export class RodScene {
       const w = p.dot(dir);
       dist = Math.max(dist, Math.abs(p.dot(right)) / tanH + w, Math.abs(p.dot(up)) / tanV + w);
     }
-    dist *= 1.06;
+    dist *= this.fitMargin;
     this.controls.target.set(0, 0, 0);
     this.camera.position.copy(dir.multiplyScalar(dist));
     this.controls.minDistance = dist * 0.25;

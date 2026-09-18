@@ -22,6 +22,17 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+// スマホ表示（style.css の @media (max-width: 760px) と同じ境界）
+const compactMq = window.matchMedia('(max-width: 760px)');
+const isCompact = () => compactMq.matches;
+compactMq.addEventListener('change', () => {
+  if (rod) {
+    rod.fitMargin = isCompact() ? 1.26 : 1.06;
+    rod.resetView();
+  }
+  update();
+});
+
 // ---------------------------------------------------------------- 入力行
 
 const LOAD_SPEC = [
@@ -135,18 +146,27 @@ const PRESETS = [
   { key: 'T', label: '単純ねじり', fallback: 300 },
 ];
 
-for (const preset of PRESETS) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'btn';
-  b.textContent = preset.label;
-  b.addEventListener('click', () => {
-    for (const q of PRESETS) state.loads[q.key] = q.key === preset.key ? state.loads[q.key] : 0;
-    if (!state.loads[preset.key]) state.loads[preset.key] = preset.fallback;
-    update();
-  });
-  $('presets').appendChild(b);
+function applyPreset(preset) {
+  for (const q of PRESETS) state.loads[q.key] = q.key === preset.key ? state.loads[q.key] : 0;
+  if (!state.loads[preset.key]) state.loads[preset.key] = preset.fallback;
+  update();
 }
+
+function addPresetButtons(host, keys) {
+  for (const preset of PRESETS) {
+    if (keys && !keys.includes(preset.key)) continue;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn';
+    b.textContent = preset.label;
+    b.addEventListener('click', () => applyPreset(preset));
+    host.appendChild(b);
+  }
+}
+
+addPresetButtons($('presets'), null);
+// 丸棒パネルにも置く（スマホでは荷重パネルが画面外なので、よく使う2つだけ手元に）
+addPresetButtons($('presets-rod'), ['N', 'T']);
 
 // ---------------------------------------------------------------- φ
 
@@ -201,6 +221,7 @@ try {
     },
   });
   rod.set({ geom: state.geom, loads: state.loads, field: state.field, sectionT: state.sectionT });
+  rod.fitMargin = isCompact() ? 1.26 : 1.06;
   rod.fitCamera(true);
   rod.setProbe(state.geom.d / 2, 0); // 既定は断面の上端（曲げ引張側の表面）
   $('hint').innerHTML =
@@ -275,7 +296,9 @@ function update(opts = {}) {
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
 
-    renderCircles($('mohr-plot'), comps, an, state.planes, phi);
+    renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
+      fontScale: isCompact() ? 1.45 : 1,
+    });
     renderElement($('element-plot'), comps, an, phi);
     renderTable(comps, an, phi);
     renderColorbar();
@@ -304,6 +327,14 @@ function renderColorbar() {
 function renderProbe(p, sec) {
   const deg = ((p.a * 180) / Math.PI).toFixed(0);
   const where = p.r >= sec.R * 0.995 ? '外周面' : '内部';
+  if (isCompact()) {
+    $('probe').innerHTML =
+      `<b>探触点</b> ${where}　` +
+      `r = <span class="val">${p.r.toFixed(1)}</span>/${sec.R.toFixed(1)} mm　` +
+      `a = <span class="val">${deg}</span>°　` +
+      `x = <span class="val">${p.x.toFixed(0)}</span> mm`;
+    return;
+  }
   $('probe').innerHTML =
     `<b>探触点</b>（${where}）　` +
     `x = <span class="val">${p.x.toFixed(1)}</span> mm ／ ` +
