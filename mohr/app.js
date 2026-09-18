@@ -141,9 +141,9 @@ for (const p of PLANES) {
 // 「単純◯◯」= 指定の荷重だけ残して他を 0 にする。
 // 残す側が 0 のときだけ既定値を入れる（ユーザーが決めた大きさを勝手に変えないため）。
 const PRESETS = [
-  { key: 'N', label: '単純引張', fallback: 40 },
-  { key: 'M', label: '単純曲げ', fallback: 260 },
-  { key: 'T', label: '単純ねじり', fallback: 300 },
+  { key: 'N', label: '単純引張', short: '引張', fallback: 40 },
+  { key: 'M', label: '単純曲げ', short: '曲げ', fallback: 260 },
+  { key: 'T', label: '単純ねじり', short: 'ねじり', fallback: 300 },
 ];
 
 function applyPreset(preset) {
@@ -159,7 +159,8 @@ function addPresetButtons(host, keys, extraClass) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn' + (extraClass ? ' ' + extraClass : '');
-    b.textContent = preset.label;
+    // スマホでは短いラベルに切り替えて1行に収める（CSSで出し分け）
+    b.innerHTML = `<span class="long">${preset.label}</span><span class="short">${preset.short}</span>`;
     b.addEventListener('click', () => applyPreset(preset));
     frag.appendChild(b);
   }
@@ -169,7 +170,7 @@ function addPresetButtons(host, keys, extraClass) {
 
 addPresetButtons($('presets'), null);
 // 丸棒パネルにも置く（スマホでは荷重パネルが画面外なので、よく使う2つだけ手元に）
-addPresetButtons($('rod-actions'), ['N', 'T'], 'preset-mobile');
+addPresetButtons($('rod-actions'), null, 'preset-mobile');
 
 // ---------------------------------------------------------------- φ
 

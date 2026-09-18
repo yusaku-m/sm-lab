@@ -261,6 +261,16 @@ PCは2列（`grid-template-areas` が `rod|mohr` / `ctrl|mohr` / `notes notes`�
 既定値が後方に書かれていると、先に書いた媒体クエリが上書きされてラベルが消える
 （2026-09-18に実際に発生）。
 
+ボタンのラベルは`<span class="long">`/`<span class="short">`の2本立てで、スマホだけ短い方を出す
+（`.btn .long`/`.btn .short`）。丸棒パネルには「単純引張・単純曲げ・単純ねじり・応力円が最大の点へ」の
+4つが並ぶので、短縮しないと360px幅で2行になって1画面に収まらない。
+
+**細い列に入力行を入れるときの落とし穴**: グリッド項目の`min-width`は既定で`auto`（=min-content）、
+かつ暗黙の`auto`トラックもmin-content未満には縮まないので、そのままだと中身が枠外へはみ出す。
+`.field-row`に`grid-template-columns: minmax(0, 1fr)`、`.rotate-area > *`・`.field-head`・
+`.field-inputs`に`min-width: 0`を入れてある（2026-09-18、360px幅でφの数値入力が枠外に出て発覚。
+`card.scrollWidth - card.clientWidth`を見れば機械的に検出できる）。
+
 カラーバーは`.viewport`の中に入れて絶対配置のオーバーレイにしてある（縦方向の場所を食わないため。
 PCでも同じ見た目）。HTML上も`#viewport`の子要素なので、動かすときは位置関係に注意。
 スマホでは**カラーバーを下・操作説明を上**に入れ替えている（上に置くと曲げの円弧と重なる）。
