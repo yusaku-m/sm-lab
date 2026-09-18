@@ -2,10 +2,12 @@
 //
 // 座標系（円筒座標）:
 //   x : 棒の軸方向（棒は x 軸に沿って置かれる）
-//   θ : 周方向（断面内の接線方向）
+//   y : 周方向（断面内の接線方向）
 //   r : 半径方向
-// 断面内の直交座標は (y, z) で、y が「曲げの中立軸から測る高さ」。
-// 断面上の点は (r, a) で表し、y = r cos(a), z = r sin(a)（a は +y 軸からの角度）。
+// θ ではなく y と呼ぶのは講義資料の表記に合わせるため（2026-09-18）。
+// 断面上の点は極座標 (r, a) で表す（a は曲げの引張側から測った角度）。
+// 曲げ応力に出てくる「中立軸からの高さ」は r cos(a) であり、上の y 軸とは別物なので
+// 式でも y を使わず r cos a と書く。
 //
 // 荷重（すべて棒全長にわたって一定）:
 //   N : 軸力 [kN]（引張が正）
@@ -13,9 +15,9 @@
 //   T : ねじりモーメント [N·m]（x 軸まわり、右ねじが正）
 //
 // 応力（単位はすべて MPa = N/mm^2）:
-//   σx  = N/A + M·y/I
-//   τxθ = T·r/Ip
-//   σθ = σr = τxr = τθr = 0
+//   σx  = N/A + M·r·cos(a)/I
+//   τxy = T·r/Ip
+//   σy = σr = τyr = τrx = 0
 //     （内圧などが無いので周方向・半径方向の垂直応力は恒等的に 0。
 //       これ自体が「一軸引張＋せん断」という応力状態の理解につながるので
 //       コンターの選択肢としては残してある。）
@@ -36,24 +38,24 @@ export function sectionProps(d) {
  * x は現状どこでも同じ結果になるが、将来 x 方向に変化する荷重を入れられるよう引数に残す。
  */
 export function stressAt(loads, sec, r, a, _x) {
-  const y = r * Math.cos(a);
+  const hb = r * Math.cos(a); // 曲げの中立軸から測った高さ（周方向の y 軸とは別物）
   return {
-    sx: (loads.N * 1000) / sec.A + (loads.M * 1000 * y) / sec.I, // σx
-    sy: 0, // σθ
-    sz: 0, // σr
-    txy: (loads.T * 1000 * r) / sec.Ip, // τxθ
+    sx: (loads.N * 1000) / sec.A + (loads.M * 1000 * hb) / sec.I, // σx
+    sy: 0, // σy（周方向）
+    sr: 0, // σr（半径方向）
+    txy: (loads.T * 1000 * r) / sec.Ip, // τxy
   };
 }
 
 /**
- * 応力成分 {sx, sy, sz, txy} から主応力などを求める。
- * τxr = τθr = 0 なので r 方向はそのまま主方向であり、
- * x–θ 面の 2 次元問題として解ける。
+ * 応力成分 {sx, sy, sr, txy} から主応力などを求める。
+ * τyr = τrx = 0 なので r 方向はそのまま主方向であり、
+ * x–y 面の 2 次元問題として解ける。
  */
 export function analyze(c) {
   const cen = (c.sx + c.sy) / 2;
   const rad = Math.hypot((c.sx - c.sy) / 2, c.txy);
-  const ps = [cen + rad, cen - rad, c.sz].sort((p, q) => q - p);
+  const ps = [cen + rad, cen - rad, c.sr].sort((p, q) => q - p);
   const [s1, s2, s3] = ps;
   const vm = Math.sqrt(
     ((s1 - s2) ** 2 + (s2 - s3) ** 2 + (s3 - s1) ** 2) / 2
@@ -64,7 +66,7 @@ export function analyze(c) {
     radius: rad,
     s1, s2, s3,
     tmax: (s1 - s3) / 2, // 3次元での最大せん断応力
-    tmaxIn: rad, // x–θ 面内の最大せん断応力
+    tmaxIn: rad, // x–y 面内の最大せん断応力
     vm,
   };
 }
@@ -75,14 +77,14 @@ export function principalAngle(c) {
 }
 
 /**
- * コンター描画用の高速パス。σx と τxθ だけからコンター量を求める
- * （σθ = σr = 0 を前提。1 フレームで 1 万点以上評価するのでオブジェクトを作らない）。
+ * コンター描画用の高速パス。σx と τxy だけからコンター量を求める
+ * （σy = σr = 0 を前提。1 フレームで 1 万点以上評価するのでオブジェクトを作らない）。
  */
 export function rawFieldValue(sx, txy, key) {
   switch (key) {
     case 'sx': return sx;
     case 'sy':
-    case 'sz': return 0;
+    case 'sr': return 0;
     case 'txy': return txy;
     default: {
       const cen = sx / 2;
@@ -99,7 +101,7 @@ export function rawFieldValue(sx, txy, key) {
   }
 }
 
-/** φ [rad] だけ反時計まわりに回した面の応力（x–θ 面内）。 */
+/** φ [rad] だけ反時計まわりに回した面の応力（x–y 面内）。 */
 export function rotated(c, phi) {
   const half = (c.sx - c.sy) / 2;
   const cen = (c.sx + c.sy) / 2;
@@ -116,9 +118,9 @@ export function rotated(c, phi) {
 
 export const FIELDS = [
   { key: 'sx', label: 'σx  軸方向の垂直応力', tex: '\\sigma_x', diverging: true, get: (a) => a.sx },
-  { key: 'sy', label: 'σθ  周方向の垂直応力', tex: '\\sigma_\\theta', diverging: true, get: (a) => a.sy },
-  { key: 'sz', label: 'σr  半径方向の垂直応力', tex: '\\sigma_r', diverging: true, get: (a) => a.sz },
-  { key: 'txy', label: 'τxθ  せん断応力', tex: '\\tau_{x\\theta}', diverging: true, get: (a) => a.txy },
+  { key: 'sy', label: 'σy  周方向の垂直応力', tex: '\\sigma_y', diverging: true, get: (a) => a.sy },
+  { key: 'sr', label: 'σr  半径方向の垂直応力', tex: '\\sigma_r', diverging: true, get: (a) => a.sr },
+  { key: 'txy', label: 'τxy  せん断応力', tex: '\\tau_{xy}', diverging: true, get: (a) => a.txy },
   { key: 's1', label: 'σ1  最大主応力', tex: '\\sigma_1', diverging: true, get: (a) => a.s1 },
   { key: 'tmax', label: 'τmax  最大せん断応力', tex: '\\tau_{\\max}', diverging: false, get: (a) => a.tmax },
   { key: 'vm', label: 'σeq  相当応力（von Mises）', tex: '\\sigma_{\\mathrm{eq}}', diverging: false, get: (a) => a.vm },

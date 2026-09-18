@@ -7,9 +7,9 @@ import { rotated, principalAngle, fmt } from './stress.js';
 const NS = 'http://www.w3.org/2000/svg';
 
 export const PLANES = [
-  { key: 'xy', label: 'x–θ 面（軸–周方向）', short: 'x–θ', color: '#ef6a4b', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'θ' },
-  { key: 'yz', label: 'θ–r 面（周–半径方向）', short: 'θ–r', color: '#2f8f6f', a: 'sy', b: 'sz', t: 'tyz', an: 'θ', bn: 'r' },
-  { key: 'zx', label: 'r–x 面（半径–軸方向）', short: 'r–x', color: '#245b8d', a: 'sz', b: 'sx', t: 'tzx', an: 'r', bn: 'x' },
+  { key: 'xy', label: 'x–y 面（軸–周方向）', short: 'x–y', color: '#ef6a4b', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
+  { key: 'yr', label: 'y–r 面（周–半径方向）', short: 'y–r', color: '#2f8f6f', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
+  { key: 'rx', label: 'r–x 面（半径–軸方向）', short: 'r–x', color: '#245b8d', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
 ];
 
 function el(tag, attrs, text) {
@@ -54,9 +54,9 @@ function arrow(g, x1, y1, x2, y2, color, width = 1.6, head = 6) {
 /**
  * モールの応力円を描く。
  * host    : SVG を入れる要素
- * comps   : {sx, sy, sz, txy}
+ * comps   : {sx, sy, sr, txy}
  * an      : analyze() の戻り値（主応力の表示に使う）
- * visible : {xy:bool, yz:bool, zx:bool}
+ * visible : {xy:bool, yr:bool, rx:bool}
  * phi     : 回転角 [rad]
  */
 export function renderCircles(host, comps, an, visible, phi, opts = {}) {
@@ -77,7 +77,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const circles = shown.map((p) => {
     const a = comps[p.a];
     const b = comps[p.b];
-    const t = p.t === 'txy' ? comps.txy : 0; // τθr, τrx は本単元では常に 0
+    const t = p.t === 'txy' ? comps.txy : 0; // τyr, τrx は本単元では常に 0
     return { plane: p, c: (a + b) / 2, r: Math.hypot((a - b) / 2, t), a, b, t };
   });
 
@@ -169,7 +169,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   });
   svg.appendChild(pg);
 
-  // --- x–θ 面の面応力点と回転
+  // --- x–y 面の面応力点と回転
   if (visible.xy) {
     const main = circles.find((c) => c.plane.key === 'xy');
     const rot = rotated(comps, phi);
@@ -213,7 +213,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     // 直径（2つの面を結ぶ弦）
     g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
 
-    for (const [pt, name] of [[A, 'x′面'], [B, 'θ′面']]) {
+    for (const [pt, name] of [[A, 'x′面'], [B, 'y′面']]) {
       const px = X(pt.s);
       const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
       g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
@@ -257,12 +257,12 @@ export function renderElement(host, comps, an, phi, opts = {}) {
   const svg = el('svg', { viewBox: `0 0 ${S} ${S}`, role: 'img', 'aria-label': '応力要素' });
   const font = 'Inter, "Noto Sans JP", sans-serif';
 
-  // 回転前の x–θ 軸（薄いガイド）
+  // 回転前の x–y 軸（薄いガイド）
   const guide = el('g', { opacity: 0.35 });
   guide.appendChild(el('line', { x1: c - 104, y1: c, x2: c + 104, y2: c, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
   guide.appendChild(el('line', { x1: c, y1: c - 104, x2: c, y2: c + 104, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
   guide.appendChild(el('text', { x: c + 108, y: c + 4, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'x'));
-  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'θ'));
+  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'y'));
   svg.appendChild(guide);
 
   // 回転した基底（画面は y 上向きなので sin の符号を反転して描く）
@@ -281,9 +281,9 @@ export function renderElement(host, comps, an, phi, opts = {}) {
   const g = el('g', {});
   // 垂直応力（面の外向き法線方向）
   const faces = [
-    { dir: n, val: rot.sn, color: '#bd442c', label: 'σn' },
+    { dir: n, val: rot.sn, color: '#bd442c', label: 'σx′' },
     { dir: [-n[0], -n[1]], val: rot.sn, color: '#bd442c' },
-    { dir: t, val: rot.sn90, color: '#245b8d', label: 'σt' },
+    { dir: t, val: rot.sn90, color: '#245b8d', label: 'σy′' },
     { dir: [-t[0], -t[1]], val: rot.sn90, color: '#245b8d' },
   ];
   for (const f of faces) {

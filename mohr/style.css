@@ -354,6 +354,46 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .notes-card p { font-size: 0.82rem; line-height: 1.8; color: var(--muted); }
 .katex { font-size: 1em; }
 
+/* ---------- 共有（URL / QR） ---------- */
+.share-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.share-title { font-size: 0.83rem; }
+.share-body { margin-top: 12px; }
+.share-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.share-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--line-solid);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 6px 9px;
+  font-family: var(--mono-font);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.share-row .btn { flex: 0 0 auto; }
+.share-qr {
+  margin: 12px auto 0;
+  width: 164px;
+  padding: 8px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  line-height: 0;
+}
+.share-qr svg { display: block; width: 100%; height: auto; }
+.share-hint {
+  margin: 10px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 .err {
   color: var(--accent-strong);
   font-size: 0.8rem;

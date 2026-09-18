@@ -117,7 +117,7 @@ function makeArrow(color) {
   return g;
 }
 
-/** 記号ラベル（x / θ / r）用のスプライト。常に正面を向き、棒の陰に隠れない。 */
+/** 記号ラベル（x / y / r）用のスプライト。常に正面を向き、棒の陰に隠れない。 */
 function makeLabelSprite(text, color) {
   const px = 128;
   const cv = document.createElement('canvas');
@@ -339,14 +339,14 @@ export class RodScene {
     );
     this.probeGroup.add(this.probeDot);
     this.probeAxes = {
-      x: makeArrow(0xbd442c), // e_x
-      t: makeArrow(0x2f8f6f), // e_θ
-      r: makeArrow(0x245b8d), // e_r
+      x: makeArrow(0xbd442c), // e_x（軸方向）
+      y: makeArrow(0x2f8f6f), // e_y（周方向）
+      r: makeArrow(0x245b8d), // e_r（半径方向）
     };
     for (const k in this.probeAxes) this.probeGroup.add(this.probeAxes[k]);
     this.probeLabels = {
       x: makeLabelSprite('x', '#bd442c'),
-      t: makeLabelSprite('θ', '#2f8f6f'),
+      y: makeLabelSprite('y', '#2f8f6f'),
       r: makeLabelSprite('r', '#245b8d'),
     };
     for (const k in this.probeLabels) this.probeGroup.add(this.probeLabels[k]);
@@ -587,18 +587,18 @@ export class RodScene {
     this.probeDot.scale.setScalar(R * 0.1);
     const ex = new THREE.Vector3(1, 0, 0);
     const er = new THREE.Vector3(0, Math.cos(a), Math.sin(a));
-    const et = new THREE.Vector3(0, -Math.sin(a), Math.cos(a));
+    const ey = new THREE.Vector3(0, -Math.sin(a), Math.cos(a)); // 周方向
     const len = R * 1.05;
     placeArrow(this.probeAxes.x, p, p.clone().addScaledVector(ex, len), R * 0.05);
-    placeArrow(this.probeAxes.t, p, p.clone().addScaledVector(et, len), R * 0.05);
+    placeArrow(this.probeAxes.y, p, p.clone().addScaledVector(ey, len), R * 0.05);
     placeArrow(this.probeAxes.r, p, p.clone().addScaledVector(er, len * 0.75), R * 0.05);
-    // 各軸の先に記号ラベル（x=軸方向, θ=周方向, r=半径方向）
+    // 各軸の先に記号ラベル（x=軸方向, y=周方向, r=半径方向）
     const lab = R * 0.72;
     this.probeLabels.x.scale.setScalar(lab);
-    this.probeLabels.t.scale.setScalar(lab);
+    this.probeLabels.y.scale.setScalar(lab);
     this.probeLabels.r.scale.setScalar(lab);
     this.probeLabels.x.position.copy(p).addScaledVector(ex, len + lab * 0.6);
-    this.probeLabels.t.position.copy(p).addScaledVector(et, len + lab * 0.6);
+    this.probeLabels.y.position.copy(p).addScaledVector(ey, len + lab * 0.6);
     this.probeLabels.r.position.copy(p).addScaledVector(er, len * 0.75 + lab * 0.6);
   }
 

@@ -15,10 +15,68 @@ const state = {
   loads: { N: 40, M: 260, T: 300 },
   geom: { d: 50, L: 250 },
   field: 'sx',
-  planes: { xy: true, yz: false, zx: false },
+  planes: { xy: true, yr: false, rx: false },
   phi: 0, // deg
   sectionT: 0.3,
+  probe: { r: 25, a: 0 }, // 探触点（r [mm], a [deg]）。初期値は setGeomDefaults で直径に合わせる
 };
+
+// ---------------------------------------------------------------- URL 状態
+
+// 設定は URL のハッシュに載せる（例 #n=40&m=260&t=300&d=50&l=250&s=30&f=sx&p=xy&q=0&pr=25&pa=0）。
+// サーバー不要でそのまま共有・QR化できるので、クエリではなくハッシュを使う。
+const PLANE_KEYS = PLANES.map((p) => p.key);
+
+function buildHash() {
+  const q = new URLSearchParams();
+  q.set('n', String(round(state.loads.N, 1)));
+  q.set('m', String(round(state.loads.M, 1)));
+  q.set('t', String(round(state.loads.T, 1)));
+  q.set('d', String(round(state.geom.d, 1)));
+  q.set('l', String(round(state.geom.L, 1)));
+  q.set('s', String(round(state.sectionT * 100, 1)));
+  q.set('f', state.field);
+  q.set('p', PLANE_KEYS.filter((k) => state.planes[k]).join('.') || '-');
+  q.set('q', String(round(state.phi, 1)));
+  const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
+  const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
+  q.set('pr', String(round(pr, 1)));
+  q.set('pa', String(round(pa, 1)));
+  return q.toString();
+}
+
+function round(v, digits) {
+  const k = Math.pow(10, digits);
+  return Math.round(v * k) / k;
+}
+
+/** ハッシュ文字列を state に流し込む。値が壊れていても既定値のまま進む。 */
+function applyHash(hash) {
+  if (!hash) return false;
+  const q = new URLSearchParams(hash);
+  const num = (key, lo, hi, cur) => {
+    const v = parseFloat(q.get(key));
+    return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : cur;
+  };
+  state.loads.N = num('n', -RANGES.N, RANGES.N, state.loads.N);
+  state.loads.M = num('m', -RANGES.M, RANGES.M, state.loads.M);
+  state.loads.T = num('t', -RANGES.T, RANGES.T, state.loads.T);
+  state.geom.d = num('d', 10, 120, state.geom.d);
+  state.geom.L = num('l', 120, 800, state.geom.L);
+  state.sectionT = num('s', 4, 88, state.sectionT * 100) / 100;
+  state.phi = num('q', -90, 90, state.phi);
+  if (q.has('f') && FIELDS.some((f) => f.key === q.get('f'))) state.field = q.get('f');
+  if (q.has('p')) {
+    const on = q.get('p').split('.');
+    for (const k of PLANE_KEYS) state.planes[k] = on.includes(k);
+  }
+  state.probe.r = num('pr', 0, state.geom.d / 2, state.geom.d / 2);
+  state.probe.a = num('pa', -360, 360, state.probe.a);
+  return true;
+}
+
+const restored = applyHash(location.hash.replace(/^#/, ''));
+if (!restored) state.probe.r = state.geom.d / 2;
 
 const $ = (id) => document.getElementById(id);
 
@@ -122,6 +180,8 @@ $('field').addEventListener('change', () => {
 
 // ---------------------------------------------------------------- 平面チェック
 
+const planeInputs = {};
+
 for (const p of PLANES) {
   const lab = document.createElement('label');
   lab.className = 'check';
@@ -129,7 +189,9 @@ for (const p of PLANES) {
     `<input type="checkbox"${state.planes[p.key] ? ' checked' : ''}>` +
     `<span class="swatch" style="background:${p.color}"></span>` +
     `<span class="long">${p.label}</span><span class="short">${p.short} 面</span>`;
-  lab.querySelector('input').addEventListener('change', (e) => {
+  const input = lab.querySelector('input');
+  planeInputs[p.key] = input;
+  input.addEventListener('change', (e) => {
     state.planes[p.key] = e.target.checked;
     update();
   });
@@ -203,8 +265,12 @@ function wrap90(deg) {
 }
 
 // update() は関数宣言なので巻き上げられるが、let は巻き上がらない。
-// RodScene の生成中に onPick → update() が走るため、ここで先に宣言しておく。
+// RodScene の生成直後に setProbe → onPick → update() が走るため、
+// update() が触る変数はすべてここで先に宣言しておく
+// （順序を戻すと "Cannot access 'X' before initialization" になる）。
 let updating = false;
+let hashTimer = 0;
+let lastHash = '';
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -224,18 +290,24 @@ try {
       update({ fromScene: true });
     },
   });
-  rod.set({ geom: state.geom, loads: state.loads, field: state.field, sectionT: state.sectionT });
-  rod.fitMargin = isCompact() ? 1.26 : 1.06;
-  rod.fitCamera(true);
-  rod.setProbe(state.geom.d / 2, 0); // 既定は断面の上端（曲げ引張側の表面）
-  $('hint').innerHTML =
-    'ドラッグ: <b>棒</b>＝探触点 ／ <b>背景</b>＝視点回転' +
-    '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>';
 } catch (e) {
   $('err').hidden = false;
   $('err').textContent =
-    'WebGL を初期化できませんでした（3D 表示のみ利用できません）。\n' + (e && e.message ? e.message : e);
+    '3D 表示を初期化できませんでした（WebGL が使えない環境かもしれません）。\n' +
+    (e && e.stack ? e.stack : e);
   $('hint').textContent = '3D 表示を利用できません';
+}
+
+// 生成後の初期化は try の外で行う。ここでのバグが
+// 「WebGL が使えない」という誤ったメッセージに化けるのを防ぐため。
+if (rod) {
+  rod.set({ geom: state.geom, loads: state.loads, field: state.field, sectionT: state.sectionT });
+  rod.fitMargin = isCompact() ? 1.26 : 1.06;
+  rod.fitCamera(true);
+  rod.setProbe(state.probe.r, (state.probe.a * Math.PI) / 180);
+  $('hint').innerHTML =
+    'ドラッグ: <b>棒</b>＝探触点 ／ <b>背景</b>＝視点回転' +
+    '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>';
 }
 
 $('reset-view').addEventListener('click', () => rod && rod.resetView());
@@ -310,10 +382,99 @@ function update(opts = {}) {
     renderColorbar();
     renderProbe(p, sec);
     renderCurrent(sec, p, comps);
+    syncHash();
   } finally {
     updating = false;
   }
 }
+
+// ---------------------------------------------------------------- 共有 UI
+
+/** アドレスバーのハッシュを現在の設定に合わせる（履歴を汚さないよう replaceState）。 */
+function syncHash() {
+  clearTimeout(hashTimer);
+  hashTimer = window.setTimeout(() => {
+    const h = buildHash();
+    if (h === lastHash) return;
+    lastHash = h;
+    try {
+      history.replaceState(null, '', '#' + h);
+    } catch (e) {
+      /* file:// などで失敗しても致命的ではないので無視 */
+    }
+    if (!$('share-body').hidden) renderShare();
+  }, 350);
+}
+
+function shareUrl() {
+  return location.origin + location.pathname + '#' + buildHash();
+}
+
+function renderShare() {
+  const url = shareUrl();
+  $('share-url').value = url;
+  const host = $('share-qr');
+  if (typeof QRCode === 'undefined') {
+    host.textContent = 'QR コードを生成できませんでした（ライブラリの読み込み失敗）';
+    return;
+  }
+  host.innerHTML = new QRCode({
+    content: url,
+    padding: 1,
+    width: 164,
+    height: 164,
+    color: '#1d2932',
+    background: '#fffdf7',
+    ecl: 'M',
+    join: true,
+  }).svg();
+}
+
+$('share-toggle').addEventListener('click', () => {
+  const body = $('share-body');
+  body.hidden = !body.hidden;
+  $('share-toggle').textContent = body.hidden ? 'URL と QR を表示' : '閉じる';
+  if (!body.hidden) renderShare();
+});
+
+$('share-copy').addEventListener('click', async () => {
+  const url = shareUrl();
+  let ok = true;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch (e) {
+    // クリップボード API が使えない環境（http や古いブラウザ）向けの保険
+    try {
+      const el = $('share-url');
+      el.select();
+      ok = document.execCommand('copy');
+    } catch (e2) {
+      ok = false;
+    }
+  }
+  const b = $('share-copy');
+  b.textContent = ok ? 'コピーしました' : '選択してコピーしてください';
+  window.setTimeout(() => { b.textContent = 'コピー'; }, 1600);
+});
+
+// 戻る/進む や URL 直貼りで設定が変わったときに追従する
+window.addEventListener('hashchange', () => {
+  const h = location.hash.replace(/^#/, '');
+  if (!h || h === lastHash) return;
+  lastHash = h;
+  applyHash(h);
+  $('field').value = state.field;
+  for (const k in planeInputs) planeInputs[k].checked = !!state.planes[k];
+  phiRange.value = state.phi;
+  phiNum.value = String(round(state.phi, 1));
+  if (rod) {
+    rod.set({
+      geom: state.geom, loads: state.loads, field: state.field, sectionT: state.sectionT,
+    });
+    rod.setProbe(state.probe.r, (state.probe.a * Math.PI) / 180);
+  }
+  update();
+});
 
 // ---------------------------------------------------------------- 表示
 
@@ -346,7 +507,7 @@ function renderProbe(p, sec) {
     `x = <span class="val">${p.x.toFixed(1)}</span> mm ／ ` +
     `r = <span class="val">${p.r.toFixed(1)}</span> mm（R = ${sec.R.toFixed(1)} mm）／ ` +
     `a = <span class="val">${deg}</span>°　` +
-    `<span class="note" style="opacity:.75">(a は曲げの引張側 +y から測った角度。y = r cos a)</span>`;
+    `<span class="note" style="opacity:.75">(a は曲げの引張側から測った角度)</span>`;
 }
 
 function renderTable(comps, an, phi) {
@@ -355,9 +516,9 @@ function renderTable(comps, an, phi) {
     `<tr><th>${name}</th><td>${fmt(v)}<span class="u">MPa</span>${note ? `<span class="u">${note}</span>` : ''}</td></tr>`;
   $('stress-table').innerHTML =
     row('σx 軸方向', comps.sx) +
-    row('σθ 周方向', comps.sy) +
-    row('σr 半径方向', comps.sz) +
-    row('τxθ せん断', comps.txy) +
+    row('σy 周方向', comps.sy) +
+    row('σr 半径方向', comps.sr) +
+    row('τxy せん断', comps.txy) +
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
     row('σ₁ 最大主応力', an.s1) +
     row('σ₂', an.s2) +
@@ -383,14 +544,14 @@ function katexInto(id, tex) {
 }
 
 function renderCurrent(sec, p, comps) {
-  const y = p.r * Math.cos(p.a);
+  const hb = p.r * Math.cos(p.a); // 中立軸からの高さ r cos a
   const n = (v, d = 0) => v.toFixed(d);
   const tex =
     `\\begin{aligned}` +
     `\\sigma_x&=\\frac{${n(state.loads.N * 1000)}}{${n(sec.A, 1)}}` +
-    `+\\frac{${n(state.loads.M * 1000)}\\times ${n(y, 1)}}{${n(sec.I, 0)}}` +
+    `+\\frac{${n(state.loads.M * 1000)}\\times ${n(hb, 1)}}{${n(sec.I, 0)}}` +
     `=${fmt(comps.sx)}\\ \\mathrm{MPa}\\\\[2pt]` +
-    `\\tau_{x\\theta}&=\\frac{${n(state.loads.T * 1000)}\\times ${n(p.r, 1)}}{${n(sec.Ip, 0)}}` +
+    `\\tau_{xy}&=\\frac{${n(state.loads.T * 1000)}\\times ${n(p.r, 1)}}{${n(sec.Ip, 0)}}` +
     `=${fmt(comps.txy)}\\ \\mathrm{MPa}` +
     `\\end{aligned}`;
   katexInto('f-current', tex);
@@ -400,16 +561,16 @@ function renderStaticFormulas() {
   katexInto('f-section', `A=\\frac{\\pi d^{2}}{4},\\qquad I=\\frac{\\pi d^{4}}{64},\\qquad I_p=\\frac{\\pi d^{4}}{32}`);
   katexInto(
     'f-stress',
-    `\\sigma_x=\\frac{N}{A}+\\frac{M\\,y}{I},\\qquad ` +
-      `\\tau_{x\\theta}=\\frac{T\\,r}{I_p},\\qquad \\sigma_\\theta=\\sigma_r=0`
+    `\\sigma_x=\\frac{N}{A}+\\frac{M\\,r\\cos a}{I},\\qquad ` +
+      `\\tau_{xy}=\\frac{T\\,r}{I_p},\\qquad \\sigma_y=\\sigma_r=0`
   );
   katexInto(
     'f-rot',
     `\\begin{aligned}` +
-      `\\sigma(\\phi)&=\\frac{\\sigma_x+\\sigma_\\theta}{2}` +
-      `+\\frac{\\sigma_x-\\sigma_\\theta}{2}\\cos 2\\phi+\\tau_{x\\theta}\\sin 2\\phi\\\\[2pt]` +
-      `\\tau(\\phi)&=-\\frac{\\sigma_x-\\sigma_\\theta}{2}\\sin 2\\phi+\\tau_{x\\theta}\\cos 2\\phi\\\\[2pt]` +
-      `\\sigma_{1,2}&=\\frac{\\sigma_x+\\sigma_\\theta}{2}\\pm\\sqrt{\\left(\\frac{\\sigma_x-\\sigma_\\theta}{2}\\right)^{2}+\\tau_{x\\theta}^{2}}` +
+      `\\sigma(\\phi)&=\\frac{\\sigma_x+\\sigma_y}{2}` +
+      `+\\frac{\\sigma_x-\\sigma_y}{2}\\cos 2\\phi+\\tau_{xy}\\sin 2\\phi\\\\[2pt]` +
+      `\\tau(\\phi)&=-\\frac{\\sigma_x-\\sigma_y}{2}\\sin 2\\phi+\\tau_{xy}\\cos 2\\phi\\\\[2pt]` +
+      `\\sigma_{1,2}&=\\frac{\\sigma_x+\\sigma_y}{2}\\pm\\sqrt{\\left(\\frac{\\sigma_x-\\sigma_y}{2}\\right)^{2}+\\tau_{xy}^{2}}` +
       `\\end{aligned}`
   );
 }
@@ -428,6 +589,9 @@ function renderTexSpans() {
 }
 
 function boot() {
+  // φ の入力欄は HTML に value="0" が入っているので、URL から復元した値を反映させる
+  phiRange.value = state.phi;
+  phiNum.value = String(round(state.phi, 1));
   renderTexSpans();
   renderStaticFormulas();
   update();

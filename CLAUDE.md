@@ -189,20 +189,27 @@ consoleやNetwork/console.logで確認するとよい）。
 
 #### 力学モデル（`stress.js`）
 
-座標系は円筒座標で x=軸方向、θ=周方向、r=半径方向。断面内の点は `(r, a)` で表し
-`y = r cos a`（a は曲げの引張側 +y から測った角度）。単位は N を kN、M/T を N·m、
-寸法を mm で受け取り、応力は MPa で返す。
+座標系は円筒座標で **x=軸方向、y=周方向、r=半径方向**。断面内の点は極座標 `(r, a)` で表す
+（a は曲げの引張側から測った角度）。単位は N を kN、M/T を N·m、寸法を mm で受け取り、
+応力は MPa で返す。
 
 ```
 A = πd²/4,  I = πd⁴/64,  Ip = πd⁴/32
-σx  = N/A + M·y/I
-τxθ = T·r/Ip
-σθ = σr = τxr = τθr = 0      ← 内圧などが無いので恒等的に 0
+σx  = N/A + M·(r cos a)/I
+τxy = T·r/Ip
+σy = σr = τyr = τrx = 0      ← 内圧などが無いので恒等的に 0
 ```
 
-`τxr = τθr = 0` なので **r 方向がそのまま主方向**であり、x–θ / θ–r / r–x の 3 つの座標面が
-そのまま 3 つのモールの円になる（`mohr2d.js` の `PLANES`、チェックボックスで表示切替。
-θ–r 面は常に原点の 1 点に潰れるが、それも「一軸応力＋せん断」の理解につながるので出している）。
+**周方向を θ ではなく y と呼ぶのは講義資料の表記に合わせるため**（2026-09-18、ユーザーの指示で
+θ→y にリネーム）。このとき**曲げ応力の「中立軸からの高さ」に y を使うと新しい y 軸と衝突する**ので、
+式でも `y` を使わず `r cos a` と書くことにした（`stressAt()` 内の変数名も `hb`）。
+以後 θ という表記は主軸の向き `θp` にだけ残っている。
+応力成分のキーは `{sx, sy, sr, txy}`（表示名 σx/σy/σr/τxy とそのまま対応）。
+
+`τyr = τrx = 0` なので **r 方向がそのまま主方向**であり、x–y / y–r / r–x の 3 つの座標面が
+そのまま 3 つのモールの円になる（`mohr2d.js` の `PLANES`、キーは `xy`/`yr`/`rx`。
+チェックボックスで表示切替。y–r 面は常に原点の 1 点に潰れるが、それも
+「一軸応力＋せん断」の理解につながるので出している）。
 
 コンターの選択肢に `σθ`・`σr`（常に 0）を残しつつ `τxθ`・`τmax`・`σeq`（von Mises）・`σ1` も
 足してあるのは、σθ/σr だけでは全部真っ白になって単元として成立しないため
@@ -291,9 +298,16 @@ PCでも同じ見た目）。HTML上も`#viewport`の子要素なので、動か
   （個別 setter を連打すると `rebuild()` が何度も走る）。
 - 逆向き（3D図のドラッグ → UI）は `onLoadsChange` / `onSectionChange` / `onPick` コールバック。
   受け側は `update({fromScene: true})` として `rod.set()` を呼び返さない。
-- `update()` は関数宣言で巻き上がるが `let updating` は巻き上がらない。`RodScene` の生成直後に
-  `setProbe()` → `onPick` → `update()` が走るため、**`let updating` はシーン生成より前に
-  宣言しておくこと**（順序を戻すと `Cannot access 'updating' before initialization` になる）。
+- `update()` は関数宣言で巻き上がるが `let` は巻き上がらない。`RodScene` の生成直後に
+  `setProbe()` → `onPick` → `update()` が走るため、**`update()` が触る `let`（`updating`,
+  `hashTimer`, `lastHash`）はすべてシーン生成より前に宣言しておくこと**
+  （順序を戻すと `Cannot access 'X' before initialization` になる。2026-09-18に
+  `hashTimer` で再発した）。
+- そのため **`try` は `new RodScene(...)` だけを包み、生成後の初期化（`set`/`fitCamera`/
+  `setProbe`）は `if (rod) { ... }` として try の外に出してある**。中に入れておくと、
+  初期化中のただのバグが「WebGL を初期化できませんでした」という誤ったメッセージに化けて
+  原因究明が遅れる（実際に2度やった）。デバッグ時は `#err` の中身と
+  `page.on('pageerror')` の両方を見ること。
 - OrbitControls は canvas に listener を張るので、**その親（`#viewport`）のキャプチャ段階**で
   先にレイキャストし、グリフ or 棒に当たったときだけ `stopPropagation()` して操作を奪っている。
   「背景のドラッグだけが視点回転」になるのはこのため。
@@ -302,6 +316,29 @@ PCでも同じ見た目）。HTML上も`#viewport`の子要素なので、動か
 
 - デバッグ用に `window.__mohr = {state, rod, update}` を公開してある。ブラウザの console から
   `__mohr.state.loads` や `__mohr.rod.probe` を覗ける。
+
+#### 設定の共有（URL ハッシュ＋QRコード）
+
+設定は**URL のハッシュ**に載せてある（例
+`#n=40&m=260&t=300&d=50&l=250&s=30&f=sx&p=xy&q=0&pr=25&pa=0`）。
+クエリではなくハッシュなのは、サーバーを介さずそのまま共有・QR化できるから。
+`app.js` の `buildHash()` / `applyHash()` が対応し、`update()` の最後で `syncHash()` が
+**デバウンス（350ms）して `history.replaceState`** する（ドラッグ中に履歴を汚さないため）。
+`hashchange` も拾うので、戻る/進む・URL直貼りでも設定が復元される。
+
+キー: `n`/`m`/`t`=荷重、`d`/`l`=寸法、`s`=輪切り位置[%]、`f`=コンターの種類、
+`p`=表示する平面（`.`区切り、無しは`-`）、`q`=φ[deg]、`pr`/`pa`=探触点の r[mm] と a[deg]。
+値は `applyHash()` 側でレンジにクランプするので、壊れたURLでも既定値で起動する。
+**`f` と `p` の値は FIELDS / PLANES のキーそのもの**なので、キー名を変えると
+既存のURLが読めなくなる（2026-09-18のθ→yリネームで `sz`→`sr`、`yz`/`zx`→`yr`/`rx` に
+変えたが、公開直後で共有URLが出回る前だったので影響なしと判断した）。
+
+共有UIは「荷重と寸法」パネルの末尾（`.share`）。URLのテキスト欄＋コピーボタン＋QRコード。
+QRは `qrcode-svg`（CDN、18KB、`window.QRCode`、`.svg()`でSVG文字列）を使っている。
+クリップボードは `navigator.clipboard` が使えない環境向けに `execCommand('copy')` の保険つき。
+
+**`index.html` の静的な入力欄の初期値には注意**: φ の `<input value="0">` は URL から復元した値で
+上書きしないと表示だけ 0 のままになる（`boot()` で代入している。2026-09-18に実際に発生）。
 
 #### 補助ボタン
 
