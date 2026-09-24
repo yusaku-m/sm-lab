@@ -72,7 +72,7 @@ function applyHash(hash) {
   state.geom.d = num('d', 10, 120, state.geom.d);
   state.geom.L = num('l', 120, 800, state.geom.L);
   state.sectionT = num('s', 4, 88, state.sectionT * 100) / 100;
-  state.phi = num('q', -90, 90, state.phi);
+  state.phi = num('q', -180, 180, state.phi);
   if (q.has('f') && FIELDS.some((f) => f.key === q.get('f'))) state.field = q.get('f');
   if (q.has('p')) {
     const on = q.get('p').split('.');
@@ -316,7 +316,7 @@ function roundAxis(a) {
 const phiRange = $('phi');
 const phiNum = $('phi-num');
 function setPhi(deg) {
-  state.phi = Math.min(90, Math.max(-90, deg));
+  state.phi = Math.min(180, Math.max(-180, deg));
   phiRange.value = state.phi;
   phiNum.value = String(Math.round(state.phi * 10) / 10);
   update({ skipRod: true }); // φ は 3D 図に影響しないので作り直さない
@@ -325,7 +325,8 @@ phiRange.addEventListener('input', () => setPhi(parseFloat(phiRange.value)));
 phiNum.addEventListener('input', () => {
   const v = parseFloat(phiNum.value);
   if (Number.isFinite(v)) {
-    state.phi = Math.min(90, Math.max(-90, v));
+    state.phi = Math.min(180, Math.max(-180, v));
+    if (state.phi !== v) phiNum.value = String(state.phi); // 範囲外の入力（例: 200）を実際の値に戻す
     phiRange.value = state.phi;
     update({ skipRod: true });
   }
