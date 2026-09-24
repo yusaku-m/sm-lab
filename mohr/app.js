@@ -497,6 +497,7 @@ function update(opts = {}) {
     const comps = stressAt(state.loads, sec, p.r, p.a, p.x);
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
+    if (rod) rod.setPhi(phi); // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
 
     const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,

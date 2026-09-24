@@ -187,6 +187,7 @@ export class RodScene {
     this.fieldKey = 'sx';
     this.sectionT = 0.28; // 0..1（棒の左端からの相対位置）
     this.probe = null; // {x, r, a}
+    this.phi = 0; // rad（応力要素の回転角。3D図の頂点は動かさず、探触点の回した軸の表示にだけ使う）
     // 図に収めるときの余白。ビューが小さいとカラーバー等のオーバーレイと
     // 棒が重なるので、スマホでは呼び出し側から大きめの値を入れる。
     this.fitMargin = 1.06;
@@ -357,6 +358,22 @@ export class RodScene {
       r: makeLabelSprite('r', '#1d2932'),
     };
     for (const k in this.probeLabels) this.probeGroup.add(this.probeLabels[k]);
+
+    // φ≠0（応力要素を回したとき）だけ出す回転後の X–Y 軸。応力要素図（mohr2d.js の
+    // renderElement）の σX/σY と同じ橙赤/青にすると、荷重グリフ M（橙赤）・P（青）と
+    // 色が一致してしまい、探触点のすぐ隣にあるだけに「軸と荷重が対応している」という
+    // 誤解を招く（黒一色にした経緯と同じ理由、CLAUDE.mdのmohr/の節を参照）。
+    // そのためP/M/T（青/橙赤/緑）と被らない紫・金で塗る。
+    this.probeAxesRot = {
+      X: makeArrow(0x7d5ba6),
+      Y: makeArrow(0xb8860b),
+    };
+    for (const k in this.probeAxesRot) this.probeGroup.add(this.probeAxesRot[k]);
+    this.probeLabelsRot = {
+      X: makeLabelSprite('X', '#7d5ba6'),
+      Y: makeLabelSprite('Y', '#b8860b'),
+    };
+    for (const k in this.probeLabelsRot) this.probeGroup.add(this.probeLabelsRot[k]);
   }
 
   // ------------------------------------------------------------ 更新
@@ -617,6 +634,26 @@ export class RodScene {
     this.probeLabels.x.position.copy(p).addScaledVector(ex, len + lab * 0.6);
     this.probeLabels.y.position.copy(p).addScaledVector(ey, len + lab * 0.6);
     this.probeLabels.r.position.copy(p).addScaledVector(er, len * 0.75 + lab * 0.6);
+
+    // 回した X–Y 軸（φ≈0 では黒い x/y と重なるだけなので出さない）
+    const showRot = Math.abs(this.phi) > 1e-4;
+    this.probeAxesRot.X.visible = showRot;
+    this.probeAxesRot.Y.visible = showRot;
+    this.probeLabelsRot.X.visible = showRot;
+    this.probeLabelsRot.Y.visible = showRot;
+    if (showRot) {
+      // stress.js の rotated() と同じ式（反時計まわりに φ）。ex を x、ey を y として扱う
+      const c2 = Math.cos(this.phi);
+      const s2 = Math.sin(this.phi);
+      const eX = ex.clone().multiplyScalar(c2).addScaledVector(ey, s2);
+      const eY = ex.clone().multiplyScalar(-s2).addScaledVector(ey, c2);
+      placeArrow(this.probeAxesRot.X, p, p.clone().addScaledVector(eX, len), R * 0.05);
+      placeArrow(this.probeAxesRot.Y, p, p.clone().addScaledVector(eY, len), R * 0.05);
+      this.probeLabelsRot.X.scale.setScalar(lab);
+      this.probeLabelsRot.Y.scale.setScalar(lab);
+      this.probeLabelsRot.X.position.copy(p).addScaledVector(eX, len + lab * 0.6);
+      this.probeLabelsRot.Y.position.copy(p).addScaledVector(eY, len + lab * 0.6);
+    }
   }
 
   // ------------------------------------------------------------ カメラ
@@ -789,6 +826,12 @@ export class RodScene {
     this.probe = { x: this.sectionX, r: Math.min(sec.R, r), a, onSurface: false };
     this._updateProbeMarker(sec);
     this.onPick(this.probe);
+  }
+
+  /** 応力要素の回転角 φ [rad]。頂点ジオメトリは作り直さず、探触点の回した X–Y 軸だけ更新する。 */
+  setPhi(phi) {
+    this.phi = phi;
+    this._updateProbeMarker(sectionProps(this.geom.d));
   }
 
   // ------------------------------------------------------------ ループ
