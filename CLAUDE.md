@@ -83,7 +83,7 @@ mohr/               # 「モールの応力円」単元（下記の通り beam/ 
   rod3d.js           # three.jsのシーン（丸棒のコンター・荷重グリフ・ドラッグ・点の拾い上げ）
   mohr2d.js          # モールの応力円と応力要素のSVG描画
   app.js             # 状態と配線
-moment/             # 「モーメントのつり合い」単元（mohr/ と同じくPyodide不使用・common/style.css不使用）
+equilibrium/        # 「力とモーメントのつり合い」単元（mohr/ と同じくPyodide不使用・common/style.css不使用）
   index.html         # CDNでKaTeX・qrcode-svg。style.css（mohr/と同じテーマ）を読む
   style.css          # mohr/style.css の配色・カード・フォームを写した自己完結テーマ
   model.js           # モーメント・合力・吸着・式(TeX)の組み立て（純粋関数、DOM非依存）
@@ -538,7 +538,11 @@ canvas に描いた文字をテクスチャにした `THREE.Sprite`（`makeLabel
 （上記、x/y/rを黒一色にした理由と同じ問題が再発する）。φ=0では黒いx/yと重なるだけなので
 非表示にしている（`Math.abs(phi) > 1e-4`）。
 
-### `moment/`（モーメントのつり合い。2026-09-25 実装、mohr/ 型）
+### `equilibrium/`（力とモーメントのつり合い。2026-09-25 実装、mohr/ 型）
+
+**フォルダ名・表示名の経緯**: 当初は `moment/`「モーメントのつり合い」だったが、未知反力を入れて
+ΣF・ΣM の両方で解くようになったため、2026-09-25 にユーザーと相談のうえ
+「力とモーメントのつり合い」へ改名し、フォルダも `equilibrium/` に変えた（URLを配る前だったので影響なし）。
 
 材力Ⅰ後期1週（Grading の `3ME_Strength_of_the_Material_I/2026/2nd/week1.py`、
 `Rod.RodwithRotationCenter`）に合わせた単元。**回転中心 O の図は資料と同じく「丸を描いてから
@@ -704,8 +708,8 @@ u=1 のときの値を係数にしてつり合いの式（ピン: `M_O = 0` の 
 
 **Phase 3（新規単元）**
 - `mohr/`（モールの応力円）… **実装済み**（ルートの`index.html`のunit-cardもリンク済み）
-- `moment/`（モーメントのつり合い）… **実装済み**（集中荷重・未知反力・集中モーメント・反力モーメント。
-  分布荷重は `ACTION_TYPES` に足す想定。上記`moment/`の節）
+- `equilibrium/`（力とモーメントのつり合い）… **実装済み**（集中荷重・未知反力・集中モーメント・反力モーメント。
+  分布荷重は `ACTION_TYPES` に足す想定。上記`equilibrium/`の節）
 - `axial/`（引張・圧縮変形）、`torsion/`（ねじり変形）… 未着手。
   ルートの`index.html`の該当unit-cardの`disabled`クラスを外してリンクを有効化する
 - `mohr/`の今後の拡張余地: x 方向に変化する応力分布（現在は全長で一定なので輪切り位置を

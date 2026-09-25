@@ -1,4 +1,4 @@
-/* moment/ 単元のテーマ（mohr/style.css の配色・カード・フォームをそのまま写したもの）。
+/* equilibrium/ 単元のテーマ（mohr/style.css の配色・カード・フォームをそのまま写したもの）。
    他の単元（beam/ 等）は common/style.css を使っており、こちらはそれとは
    独立した自己完結スタイル（common/style.css は読み込まない）。
    図（SVG/WebGL）が明色背景前提のため、common/style.css と同様に

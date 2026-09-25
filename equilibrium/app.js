@@ -1,4 +1,4 @@
-// モーメントのつり合い — 状態と配線
+// 力とモーメントのつり合い — 状態と配線
 import {
   ACTION_TYPES, actionType, analyze, sumLines, decompose, compose, posText, fmt, namesOf,
   senseText, accelerations, clamp01, snapTilt, ANIM_T, posTex, angleTex, lengthSym, signed,
