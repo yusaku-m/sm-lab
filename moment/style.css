@@ -1,0 +1,390 @@
+/* moment/ 単元のテーマ（mohr/style.css の配色・カード・フォームをそのまま写したもの）。
+   他の単元（beam/ 等）は common/style.css を使っており、こちらはそれとは
+   独立した自己完結スタイル（common/style.css は読み込まない）。
+   図（SVG/WebGL）が明色背景前提のため、common/style.css と同様に
+   ダークモードへは追従しない。 */
+
+:root {
+  color-scheme: light only;
+  --ink: #1d2932;
+  --muted: #627078;
+  --paper: #fffdf7;
+  --line: #1d293226;
+  --line-solid: #ddd7ca;
+  --accent: #ef6a4b;
+  --accent-strong: #bd442c;
+  --accent-soft: #ffac92;
+  --blue: #245b8d;
+  --blue-soft: #7aa8ce;
+  --green: #2f8f6f;
+  --display-font: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --body-font: Inter, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  --mono-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* hidden 属性の display:none は UA スタイル由来なので、author 側で display を
+   指定した要素（.axis-fields など）には負けて効かない。このプロジェクトは
+   hidden 属性で出し入れする箇所が複数あるので、ここで確実に効かせておく。
+   2026-09-18、軸範囲の入力欄が「自動」でも消えずに残っていて発覚。 */
+[hidden] { display: none !important; }
+
+html {
+  background:
+    radial-gradient(circle at 14% 22%, #ef6a4b1a, #0000 26%),
+    linear-gradient(135deg, #f9f6ee 0%, #f1eee5 100%);
+  background-attachment: fixed;
+  min-width: 320px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 0 clamp(12px, 3vw, 32px) 64px;
+  font-family: var(--body-font);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+::selection { color: var(--paper); background: var(--accent-strong); }
+
+/* ---------- header ---------- */
+.site-head {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px 4px 20px;
+}
+.home-link {
+  display: inline-block;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.home-link:hover { color: var(--accent-strong); }
+.site-head h1 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+.site-head .lede {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin: 10px 0 0;
+  text-wrap: pretty;
+}
+
+/* ---------- layout ---------- */
+.lab {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: grid;
+  gap: clamp(14px, 1.6vw, 22px);
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "fig   fig"
+    "ctrl  notes";
+}
+.fig-card { grid-area: fig; }
+.controls-card { grid-area: ctrl; }
+.notes-card { grid-area: notes; }
+
+@media (max-width: 920px) {
+  .lab {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "fig" "ctrl" "notes";
+  }
+}
+
+/* ---------- card ---------- */
+.card {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: clamp(16px, 2vw, 24px);
+  padding: clamp(16px, 2.2vw, 26px);
+  box-shadow: 0 24px 70px #1c242c14;
+  min-width: 0;
+}
+.kicker {
+  color: var(--accent-strong);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.card h2 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 1.22rem;
+  margin: 0 0 4px;
+}
+.card .sub {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  margin: 0 0 14px;
+}
+
+/* ---------- toolbar / form controls ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.toolbar label { font-size: 0.8rem; color: var(--muted); }
+select, .btn {
+  border: 1px solid var(--line-solid);
+  background: #fffefa;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+select:hover, .btn:hover { border-color: var(--accent-soft); }
+.btn { cursor: pointer; }
+.btn:active { background: #f6f1e7; }
+.btn-accent {
+  border-color: var(--accent-soft);
+  background: #fdf0ea;
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.btn-accent:hover { border-color: var(--accent); background: #fce5dc; }
+.toolbar-tight { gap: 8px; margin-bottom: 10px; }
+.toolbar-tight .btn { padding: 6px 12px; font-size: 0.78rem; }
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+}
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.swatch { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+
+.tex { display: inline-block; }
+.tex .katex { font-size: 1.05em; }
+/* ---------- 共有（URL / QR）。ページ最下部の footer に置いてある ---------- */
+.site-foot {
+  max-width: 1440px;
+  margin: clamp(14px, 1.6vw, 22px) auto 0;
+  padding: 0 4px;
+}
+.site-foot .btn[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: #fce5dc;
+}
+.share-body {
+  margin-top: 12px;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: clamp(16px, 2vw, 24px);
+  padding: clamp(14px, 2vw, 22px);
+  box-shadow: 0 24px 70px #1c242c14;
+}
+.share-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.share-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--line-solid);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 6px 9px;
+  font-family: var(--mono-font);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.share-row .btn { flex: 0 0 auto; }
+.share-qr {
+  /* SVG 自身が 4 モジュールの余白を持つので、枠側の padding は 0 でよい。
+     背景は白（余白と同色）にして、カメラから見て余白が途切れないようにする。 */
+  margin: 12px auto 0;
+  width: min(224px, 100%);
+  padding: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  line-height: 0;
+}
+.share-qr svg,
+.share-qr img { display: block; width: 100%; height: auto; }
+.share-hint {
+  margin: 10px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.err {
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  margin-top: 10px;
+  white-space: pre-wrap;
+}
+
+
+/* ---------- 図 ---------- */
+.fig-card .toolbar { row-gap: 8px; }
+.seg-label { font-size: 0.78rem; color: var(--muted); }
+.play { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.play .icon { font-size: 0.72rem; }
+.play[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.play[aria-pressed="true"] .icon { display: none; }
+
+.figure {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #fffdf8 0%, #f5f0e5 100%);
+  border: 1px solid var(--line);
+  user-select: none;
+}
+/* ドラッグ中は図の範囲を固定するので、はみ出した矢印は枠の外へ描く（離すと収め直す） */
+.figure svg { display: block; width: 100%; height: auto; touch-action: none; overflow: visible; }
+.fig-overlay { position: absolute; inset: 0; pointer-events: none; font-size: 16px; }
+.fig-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  line-height: 1;
+}
+.fig-label .katex { font-size: 1.12em; }
+.fig-label.small .katex { font-size: 0.88em; }
+.fig-label.bg { background: #fffdf7e6; border-radius: 4px; padding: 1px 3px; }
+.fig-label.muted { color: var(--muted) !important; }
+
+.fig-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: 0.9rem;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: #fdf0ea;
+  border: 1px solid #ffac9266;
+  transition: box-shadow 0.3s;
+}
+.status .sense { color: var(--accent-strong); font-weight: 600; font-size: 0.82rem; }
+.status .fsum { color: var(--muted); font-size: 0.82rem; }
+.status.still { box-shadow: 0 0 0 3px #2f8f6f55; }
+
+/* ---------- 荷重の一覧 ---------- */
+.load-list { display: grid; gap: 8px; }
+.load-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--c);
+  border-radius: 12px;
+  background: #fffefa;
+}
+.load-row.selected { background: #fbf6ea; box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent); }
+.chip {
+  border: 0;
+  background: none;
+  color: var(--c);
+  padding: 0 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  min-width: 2.2em;
+}
+.lf { display: inline-flex; align-items: center; gap: 5px; font-size: 0.78rem; color: var(--muted); min-width: 0; }
+.lf input, .lf select {
+  border: 1px solid var(--line-solid);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 4px 7px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.lf select { border-radius: 8px; padding: 4px 6px; }
+.lf input[type="text"] { width: 5.4rem; }
+.lf input[type="number"] { width: 4.6rem; text-align: right; }
+.lf input:focus { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+.lf .u { font-size: 0.74rem; }
+.pos-mm { font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.del { margin-left: auto; padding: 3px 10px; }
+.add-row { margin-top: 12px; justify-content: space-between; }
+.later { margin: 10px 0 0; font-size: 0.74rem; }
+code {
+  font-family: var(--mono-font);
+  font-size: 0.78rem;
+  background: #f4efe3;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; cursor: pointer; user-select: none; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+/* ---------- 式 ---------- */
+.terms { display: grid; gap: 10px; margin-bottom: 12px; }
+.term, .formula {
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: #fbf7ee;
+  border: 1px solid var(--line);
+  overflow-x: auto;
+}
+.term { border-left: 4px solid var(--c); }
+.term .cap, .formula .cap { font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; line-height: 1.6; }
+.term .cap b { color: var(--c); font-weight: 600; }
+.eq .katex-display { margin: 4px 0; text-align: left; }
+.eq .katex-display > .katex { text-align: left; }
+.why { margin: 2px 0 0; font-size: 0.78rem; color: var(--muted); }
+.formula { margin-bottom: 12px; }
+.formula.sum { border-color: #ffac9288; background: #fdf3ec; }
+.verdict { font-size: 0.86rem; line-height: 1.8; margin: 4px 0 0; }
+.ok { color: var(--green); }
+.ng { color: var(--accent-strong); }
+.katex { font-size: 1em; }
+
+.err { color: var(--accent-strong); font-size: 0.8rem; margin-top: 10px; white-space: pre-wrap; }
+
+/* スマホ。このブロックは最後に置く（前方の汎用ルールに上書きされないため） */
+@media (max-width: 760px) {
+  body { padding: 0 10px 48px; }
+  .site-head { padding: 16px 2px 10px; }
+  .site-head .lede { font-size: 0.82rem; line-height: 1.6; }
+  .lab { gap: 10px; }
+  .card { padding: 12px; border-radius: 14px; }
+  .fig-card .kicker, .fig-card .sub { display: none; }
+  .fig-card > h2 { font-size: 0.98rem; }
+  .fig-card .toolbar { gap: 6px; margin-bottom: 8px; }
+  .fig-card .toolbar .seg-label { display: none; }
+  .fig-card .toolbar select { flex: 1 1 40%; min-width: 0; font-size: 0.76rem; padding: 6px 8px; }
+  .play { margin-left: 0; flex: 1 1 100%; justify-content: center; }
+  .status { font-size: 0.8rem; }
+  .load-row { gap: 6px 8px; }
+  .del { margin-left: 0; }
+}

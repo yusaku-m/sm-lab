@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>モーメントのつり合い — 棒に作用する荷重</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+</head>
+<body>
+
+<header class="site-head">
+  <a class="home-link" href="../index.html">← sm-lab トップへ</a>
+  <h1>モーメントのつり合い</h1>
+  <p class="lede">棒に荷重を置いて、点 O まわりのモーメントを式と円弧の矢印で確かめます。O も荷重も図の上で直接ドラッグでき、「動かしてみる」で棒がどちらへ回り出すかが見られます。</p>
+</header>
+
+<main class="lab">
+
+  <!-- ------------------------------------------------ 図 -->
+  <section class="card fig-card">
+    <p class="kicker">Free body</p>
+    <h2>棒と荷重</h2>
+    <p class="sub">矢印の<b>先端</b>を上下に引くと大きさと向き、<b>左右に大きく引くと斜め</b>になります（<span class="tex" data-tex="\frac{\pi}{6},\ \frac{\pi}{4},\ \frac{\pi}{3},\ \frac{\pi}{2}"></span> に吸い付きます）。矢印の<b>軸</b>を左右に引くと作用点、<b>O の丸</b>を引くと回転中心が動きます（<span class="tex" data-tex="L/2,\ L/3,\ L/4,\ L/5,\ L/10"></span> の位置に吸い付きます）。棒をダブルクリックすると荷重が増えます。</p>
+
+    <div class="toolbar">
+      <label class="seg-label" for="mode">支え方</label>
+      <select id="mode">
+        <option value="pin">O で回転だけ許して支える</option>
+        <option value="free">自由体（支えなし）</option>
+      </select>
+      <label class="seg-label" for="notation">長さの記号</label>
+      <select id="notation">
+        <option value="L">L で表す（O からの距離）</option>
+        <option value="x">x 座標で表す（左端が原点）</option>
+      </select>
+      <button class="btn btn-accent play" id="play" type="button" aria-pressed="false"><span class="icon" aria-hidden="true">▶</span><span class="lbl">動かしてみる</span></button>
+    </div>
+
+    <div class="figure" id="figure"></div>
+
+    <div class="fig-foot">
+      <div class="status" id="status"></div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="show-each" checked>荷重ごとのモーメント</label>
+        <label class="check"><input type="checkbox" id="show-values">図に数値も出す</label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ 荷重 -->
+  <section class="card controls-card">
+    <p class="kicker">Loads</p>
+    <h2>荷重</h2>
+    <p class="sub">位置は <code>2L/3</code>・<code>L/4</code>・<code>0.35L</code> のように L で、または数字だけ（mm）で入力できます。傾きは鉛直から測り、右へ倒すと正です。</p>
+    <div class="toolbar toolbar-tight" id="presets"></div>
+    <div class="load-list" id="load-list"></div>
+    <div class="toolbar toolbar-tight add-row">
+      <button class="btn btn-accent" id="add-load" type="button">＋ 荷重を足す</button>
+      <label class="lf len"><span>棒の長さ <span class="tex" data-tex="L"></span></span>
+        <input id="Lmm" type="number" min="1" step="100"><span class="u">mm</span></label>
+    </div>
+    <p class="sub later">分布荷重・集中モーメントは今後追加予定です。</p>
+  </section>
+
+  <!-- ------------------------------------------------ 式 -->
+  <section class="card notes-card">
+    <p class="kicker">Formulas</p>
+    <h2><span class="tex" data-tex="O"></span> 点まわりのモーメント</h2>
+    <p class="sub" id="l-note">反時計まわりを正とします。L 表記では「O からの距離 × 力の鉛直成分」を求め、回す向きで符号を決めます。</p>
+    <p class="sub" id="x-note" hidden>反時計まわりを正とします。x 座標で書くと、腕の長さ <span class="tex" data-tex="x_i - x_O"></span> の符号が O の左右を自動的に受け持つので、式の符号は「上向きが +、下向きが −」だけで決まります。</p>
+    <div class="terms" id="terms"></div>
+    <div class="formula sum">
+      <div class="cap">合計</div>
+      <div id="sum"></div>
+    </div>
+    <div class="formula" id="forces" hidden>
+      <div class="cap">力のつり合い（自由体。右向き・上向きが正）</div>
+      <div id="forces-body"></div>
+    </div>
+    <p class="verdict" id="verdict"></p>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <button class="btn btn-accent" id="share-toggle" type="button" aria-expanded="false" aria-controls="share-body">現状QR</button>
+  <div class="share-body" id="share-body" hidden>
+    <div class="share-row">
+      <input id="share-url" type="text" readonly aria-label="共有URL">
+      <button class="btn" id="share-copy" type="button">コピー</button>
+    </div>
+    <div class="share-qr" id="share-qr"></div>
+    <p class="share-hint">この QR / URL を読み込むと、いまの荷重・O の位置・表記ごとこのページが開きます。QR は<b>右クリック（スマホは長押し）で画像としてコピー・保存</b>できます。</p>
+  </div>
+</footer>
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/qrcode-svg@1.1.0/dist/qrcode.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
