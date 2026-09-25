@@ -1,9 +1,9 @@
 // モーメントのつり合い — 状態と配線
 import {
-  ACTION_TYPES, actionType, analyze, sumLines, decompose, compose, posText, fmt, symbolIndex,
-  senseText, accelerations, clamp01, snapTilt, ANIM_T, posTex, angleTex,
+  ACTION_TYPES, actionType, analyze, sumLines, decompose, compose, posText, fmt, namesOf,
+  senseText, accelerations, clamp01, snapTilt, ANIM_T, posTex, angleTex, lengthSym, signed,
 } from './model.js';
-import { MomentFigure, COLORS, P_MAX } from './figure.js';
+import { MomentFigure, COLORS, P_MAX, C_MAX } from './figure.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULT = () => ({
   mode: 'pin',       // 'pin'（O で回転だけ許して支える）| 'free'（自由体）
-  notation: 'L',     // 'L'（L の分数で書く）| 'x'（左端からの x 座標で書く）
+  notation: 'L',     // 長さの記号: 'L'（棒全体）| 'x'（切り取った自由体の長さ）
   Lmm: 1000,
   tO: 0,
   actions: [
@@ -24,39 +24,55 @@ const DEFAULT = () => ({
 
 const PRESETS = [
   {
-    id: 'lecture', label: '左端が O（資料の図）',
+    label: '左端が O（資料の図）',
     make: () => ({ mode: 'pin', tO: 0, actions: [
       { type: 'point', t: 1, P: 5, dir: 90 },
       { type: 'point', t: 0.5, P: 8, dir: compose(false, 30) },
     ] }),
   },
   {
-    id: 'lever', label: 'てこのつり合い',
+    label: '回らない力を求める',
+    make: () => ({ mode: 'pin', tO: 0, actions: [
+      { type: 'point', t: 0.5, P: 6, dir: compose(false, 30) },
+      { type: 'reaction', t: 1, dir: 90 },
+    ] }),
+  },
+  {
+    label: 'てこのつり合い',
     make: () => ({ mode: 'pin', tO: 1 / 3, actions: [
       { type: 'point', t: 0, P: 6, dir: -90 },
       { type: 'point', t: 1, P: 3, dir: -90 },
     ] }),
   },
   {
-    id: 'couple', label: '偶力（自由体）',
+    label: '単純支持の反力（自由体）',
+    make: () => ({ mode: 'free', tO: 0, actions: [
+      { type: 'reaction', t: 0, dir: 90 },
+      { type: 'reaction', t: 1, dir: 90 },
+      { type: 'point', t: 1 / 3, P: 9, dir: -90 },
+    ] }),
+  },
+  {
+    label: '片持ちの反力（自由体）',
+    make: () => ({ mode: 'free', tO: 0, actions: [
+      { type: 'reaction', t: 0, dir: 90 },
+      { type: 'rmoment', t: 0, sgn: 1 },
+      { type: 'point', t: 1, P: 4, dir: -90 },
+      { type: 'moment', t: 0.5, C: 2 },
+    ] }),
+  },
+  {
+    label: '偶力（自由体）',
     make: () => ({ mode: 'free', tO: 0.5, actions: [
       { type: 'point', t: 0.2, P: 6, dir: 90 },
       { type: 'point', t: 0.8, P: 6, dir: -90 },
     ] }),
   },
-  {
-    id: 'balanced', label: 'つり合った自由体',
-    make: () => ({ mode: 'free', tO: 0.25, actions: [
-      { type: 'point', t: 0, P: 4, dir: 90 },
-      { type: 'point', t: 0.6, P: 10, dir: -90 },
-      { type: 'point', t: 1, P: 6, dir: 90 },
-    ] }),
-  },
 ];
 
 // URL ハッシュでの荷重の種類の略号（applyHash() が起動直後に使うのでここで宣言する）
-const TYPE_KEY = { point: 'p' };
-const KEY_TYPE = { p: 'point' };
+const TYPE_KEY = { point: 'p', reaction: 'r', moment: 'c', rmoment: 'm' };
+const KEY_TYPE = { p: 'point', r: 'reaction', c: 'moment', m: 'rmoment' };
 
 // update() が触る let はシーン生成より前に宣言しておく（mohr/ と同じ理由）
 let state = DEFAULT();
@@ -66,7 +82,6 @@ let res = null;
 let hashTimer = 0;
 let lastHash = '';
 let anim = null;
-let dragging = false;
 
 applyHash(location.hash.replace(/^#/, ''));
 
@@ -76,11 +91,10 @@ const fig = new MomentFigure($('figure'), {
     stopAnim();
     if ('tO' in ch) state.tO = ch.tO;
     if (ch.action) state.actions[ch.action.k] = ch.action.value;
-    if ('add' in ch) addAction(ch.add);
+    if (ch.add) addAction(ch.add.type, ch.add.t);
     update();
   },
   onSelect: (k) => { state.sel = k; syncList(); },
-  onDragState: (d) => { dragging = d; },
 });
 
 // ---------------------------------------------------------------- 更新
@@ -104,34 +118,89 @@ function draw() {
   fig.render({ ...ctxState(), animating: !!anim }, res, anim ? anim.frame : null);
 }
 
-function addAction(t = 0.5) {
+function addAction(type = 'point', t = null) {
   if (state.actions.length >= COLORS.length) return;
-  const a = ACTION_TYPES.point.create(t);
-  state.actions.push(a);
+  if (t === null) {
+    // 空いている位置（既存の荷重と重ならないところ）を探す
+    const cands = type === 'point' || type === 'moment'
+      ? [0.5, 1, 0.25, 0.75, 1 / 3, 2 / 3, 0, 0.1, 0.9]
+      : [0, 1, 0.5, 0.25, 0.75];
+    t = cands.find((c) => !state.actions.some((a) => Math.abs(a.t - c) < 1e-6)) ?? 0.5;
+  }
+  state.actions.push(ACTION_TYPES[type].create(t));
   state.sel = state.actions.length - 1;
 }
 
 // ---------------------------------------------------------------- 荷重の一覧
 
 const list = $('load-list');
+const lsymNow = () => lengthSym(state);
+
+/** 種類ごとの入力欄 */
+const ROW_FIELDS = {
+  point: () => `
+    ${posField()}
+    <label class="lf"><span>大きさ</span>
+      <input data-f="P" type="number" min="0" max="${P_MAX}" step="0.5"><span class="u">kN</span></label>
+    ${dirFields('向き')}`,
+  reaction: () => `
+    ${posField()}
+    ${dirFields('仮定の向き')}
+    <span class="lf solved" data-f="val"></span>`,
+  moment: () => `
+    ${posField()}
+    <label class="lf"><span>大きさ</span>
+      <input data-f="C" type="number" min="0" max="${C_MAX}" step="0.5"><span class="u">kN·m</span></label>
+    ${senseField('向き')}`,
+  rmoment: () => `
+    ${posField()}
+    ${senseField('仮定の向き')}
+    <span class="lf solved" data-f="val"></span>`,
+};
+const posField = () => `<label class="lf"><span>位置</span>
+  <input data-f="pos" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="位置（例: 2L/3, 0.4L, 250）">
+  <span class="pos-mm"></span></label>`;
+const dirFields = (label) => `<label class="lf"><span>${label}</span>
+  <select data-f="up"><option value="up">上向き</option><option value="down">下向き</option></select></label>
+  <label class="lf"><span>傾き</span>
+  <input data-f="tilt" type="number" min="-90" max="90" step="1"><span class="u">°</span></label>`;
+const senseField = (label) => `<label class="lf"><span>${label}</span>
+  <select data-f="sense"><option value="ccw">反時計まわり</option><option value="cw">時計まわり</option></select></label>`;
 
 function syncList() {
   const rows = list.querySelectorAll('.load-row');
-  if (rows.length !== state.actions.length) buildList();
+  const sig = state.actions.map((a) => a.type).join(',') + '|' + state.notation;
+  if (rows.length !== state.actions.length || list.dataset.sig !== sig) buildList();
   state.actions.forEach((a, k) => {
     const row = list.children[k];
+    const q = (f) => row.querySelector(`[data-f="${f}"]`);
     row.classList.toggle('selected', k === state.sel);
-    const { up, tilt } = decompose(a.dir);
-    setIfIdle(row.querySelector('[data-f="pos"]'), posText(a.t));
+    setIfIdle(q('pos'), posText(a.t, lsymNow()));
     row.querySelector('.pos-mm').textContent = `= ${fmt(a.t * state.Lmm, 1)} mm`;
-    setIfIdle(row.querySelector('[data-f="P"]'), String(fmt(a.P, 2)));
-    setIfIdle(row.querySelector('[data-f="up"]'), up ? 'up' : 'down');
-    setIfIdle(row.querySelector('[data-f="tilt"]'), String(fmt(tilt, 1)));
+    if (a.dir !== undefined) {
+      const { up, tilt } = decompose(a.dir);
+      setIfIdle(q('up'), up ? 'up' : 'down');
+      setIfIdle(q('tilt'), String(fmt(tilt, 1)));
+    }
+    if (a.type === 'point') setIfIdle(q('P'), String(fmt(a.P, 2)));
+    if (a.type === 'moment') {
+      setIfIdle(q('C'), String(fmt(Math.abs(a.C), 2)));
+      setIfIdle(q('sense'), a.C >= 0 ? 'ccw' : 'cw');
+    }
+    if (a.type === 'rmoment') setIfIdle(q('sense'), a.sgn > 0 ? 'ccw' : 'cw');
+    if (q('val')) {
+      const u = res && res.unknowns.find((x) => x.k === k);
+      q('val').innerHTML = u && u.value !== null
+        ? tex(`= ${signed(u.value)}\\,\\mathrm{${u.unit === 'kN' ? 'kN' : 'kN\\cdot m'}}`)
+        : '<span class="muted-note">（つり合いの式から求める）</span>';
+    }
   });
-  $('add-load').disabled = state.actions.length >= COLORS.length;
+  for (const b of document.querySelectorAll('.add-btn')) b.disabled = state.actions.length >= COLORS.length;
   $('mode').value = state.mode;
   $('notation').value = state.notation;
   setIfIdle($('Lmm'), String(state.Lmm));
+  $('len-sym').dataset.tex = lsymNow();
+  renderTex($('len-sym').parentElement);
   $('show-each').checked = state.showEach;
   $('show-values').checked = state.showValues;
 }
@@ -142,53 +211,61 @@ function setIfIdle(el, v) {
 
 function buildList() {
   list.replaceChildren();
+  list.dataset.sig = state.actions.map((a) => a.type).join(',') + '|' + state.notation;
   state.actions.forEach((a, k) => {
-    const i = symbolIndex(state.actions, k);
+    const nm = namesOf(state.actions, k);
     const color = COLORS[k % COLORS.length];
     const row = document.createElement('div');
-    row.className = 'load-row';
+    row.className = `load-row type-${a.type}`;
     row.style.setProperty('--c', color);
     row.innerHTML = `
-      <button class="chip" type="button" data-f="sel" title="図で選ぶ"><span class="tex" data-tex="${actionType(a).symbol(i)}"></span></button>
-      <label class="lf"><span>位置</span>
-        <input data-f="pos" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="位置（例: 2L/3, 0.4L, 250）">
-        <span class="pos-mm"></span></label>
-      <label class="lf"><span>大きさ</span>
-        <input data-f="P" type="number" min="0" max="${P_MAX}" step="0.5"><span class="u">kN</span></label>
-      <label class="lf"><span>向き</span>
-        <select data-f="up"><option value="up">上向き</option><option value="down">下向き</option></select></label>
-      <label class="lf"><span>傾き</span>
-        <input data-f="tilt" type="number" min="-90" max="90" step="1"><span class="u">°</span></label>
-      <button class="btn del" type="button" data-f="del" aria-label="この荷重を消す">×</button>`;
+      <button class="chip" type="button" data-f="sel" title="${actionType(a).label}"><span class="tex" data-tex="${nm.sym}"></span></button>
+      <span class="kind">${actionType(a).label}</span>
+      ${ROW_FIELDS[a.type]()}
+      <button class="btn del" type="button" data-f="del" aria-label="消す">×</button>`;
     list.append(row);
     renderTex(row);
 
-    const on = (f, ev, fn) => row.querySelector(`[data-f="${f}"]`).addEventListener(ev, fn);
+    const q = (f) => row.querySelector(`[data-f="${f}"]`);
+    const on = (f, ev, fn) => { const el = q(f); if (el) el.addEventListener(ev, fn); };
     const pick = () => { state.sel = k; syncList(); draw(); };
+    const commit = () => { stopAnim(); update(); };
     row.addEventListener('focusin', pick);
     on('sel', 'click', pick);
     on('pos', 'change', (e) => {
       const t = parsePos(e.target.value);
       if (t !== null) state.actions[k].t = t;
-      e.target.value = posText(state.actions[k].t);
-      stopAnim(); update();
+      e.target.value = posText(state.actions[k].t, lsymNow());
+      commit();
     });
     on('P', 'input', (e) => {
       const v = parseFloat(e.target.value);
       if (!isFinite(v)) return;
       state.actions[k].P = Math.min(P_MAX, Math.max(0, v));
-      stopAnim(); update();
+      commit();
     });
     const setDir = () => {
-      const up = row.querySelector('[data-f="up"]').value === 'up';
-      let tilt = parseFloat(row.querySelector('[data-f="tilt"]').value);
+      const up = q('up').value === 'up';
+      let tilt = parseFloat(q('tilt').value);
       if (!isFinite(tilt)) tilt = 0;
-      tilt = Math.max(-90, Math.min(90, tilt));
-      state.actions[k].dir = compose(up, tilt);
-      stopAnim(); update();
+      state.actions[k].dir = compose(up, Math.max(-90, Math.min(90, tilt)));
+      commit();
     };
     on('up', 'change', setDir);
     on('tilt', 'input', setDir);
+    const setMoment = () => {
+      const ccw = q('sense').value === 'ccw';
+      const a2 = state.actions[k];
+      if (a2.type === 'rmoment') a2.sgn = ccw ? 1 : -1;
+      else {
+        let v = parseFloat(q('C').value);
+        if (!isFinite(v)) v = Math.abs(a2.C);
+        a2.C = (ccw ? 1 : -1) * Math.min(C_MAX, Math.max(0, v));
+      }
+      commit();
+    };
+    on('sense', 'change', setMoment);
+    on('C', 'input', setMoment);
     on('del', 'click', () => {
       state.actions.splice(k, 1);
       stopAnim(); buildList(); update();
@@ -196,71 +273,116 @@ function buildList() {
   });
 }
 
-/** 位置の入力を読む。"2L/3"・"L/2"・"0.4L"・"2/3L"・"L" は L の分数、数字だけは mm。 */
+/** 位置の入力を読む。"2L/3"・"L/2"・"0.4L"・"2/3L"（x も同じ）は長さの分数、数字だけは mm。 */
 function parsePos(str) {
-  const s = String(str).replace(/\s+/g, '').replace(/ｌ|Ｌ/g, 'L').replace(/／/g, '/');
+  const s = String(str).replace(/\s+/g, '').replace(/ｌ|Ｌ/g, 'L').replace(/ｘ/g, 'x').replace(/／/g, '/');
   let m;
-  if ((m = s.match(/^(\d*\.?\d*)L(?:\/(\d+))?$/i))) {
+  if ((m = s.match(/^(\d*\.?\d*)[Lx](?:\/(\d+))?$/i))) {
     const n = m[1] === '' ? 1 : parseFloat(m[1]);
     const d = m[2] ? parseInt(m[2], 10) : 1;
     return isFinite(n) && d > 0 ? clamp01(n / d) : null;
   }
-  if ((m = s.match(/^(\d+)\/(\d+)L$/i))) return clamp01(+m[1] / +m[2]);
+  if ((m = s.match(/^(\d+)\/(\d+)[Lx]$/i))) return clamp01(+m[1] / +m[2]);
   const v = parseFloat(s);
   return isFinite(v) ? clamp01(v / state.Lmm) : null;
 }
 
 // ---------------------------------------------------------------- 式
 
+function captionOf(a, k) {
+  const nm = namesOf(state.actions, k);
+  const T = actionType(a);
+  const lsym = lsymNow();
+  const where = Math.abs(a.t - state.tO) < 1e-9 ? 'O の位置' : `O から ${tex(posTex(a.t - state.tO, lsym))}`;
+  if (a.type === 'point' || a.type === 'reaction') {
+    const { up, tilt } = decompose(a.dir);
+    const head = a.type === 'point'
+      ? `<b>${tex(`${nm.sym} = ${fmt(a.P, 2)}\\,\\mathrm{kN}`)}</b>`
+      : `<b>${tex(nm.sym)}</b>（大きさ未知）`;
+    const dirTxt = (a.type === 'reaction' ? '仮定の向き：' : '') + (up ? '上向き' : '下向き');
+    const tiltTxt = Math.abs(tilt) > 0.5
+      ? `（鉛直から${tilt > 0 ? '右' : '左'}へ ${tex(`${nm.theta} = ${angleTex(tilt)}`)}）` : '';
+    return `${T.label} ${head}、${where}、${dirTxt}${tiltTxt}`;
+  }
+  if (a.type === 'moment') {
+    return `${T.label} <b>${tex(`${nm.sym} = ${fmt(Math.abs(a.C), 2)}\\,\\mathrm{kN\\cdot m}`)}</b>、${a.C >= 0 ? '反時計まわり' : '時計まわり'}`;
+  }
+  return `${T.label} <b>${tex(nm.sym)}</b>（大きさ未知）、仮定の向き：${a.sgn > 0 ? '反時計まわり' : '時計まわり'}`;
+}
+
 function renderFormulas() {
   const host = $('terms');
-  const st = ctxState();
   const parts = [];
   res.terms.forEach((t, k) => {
     const a = state.actions[k];
-    const i = symbolIndex(state.actions, k);
-    const { up, tilt } = decompose(a.dir);
     const color = COLORS[k % COLORS.length];
-    const where = state.notation === 'x'
-      ? `x_{${i}} = ${fmt(a.t * st.Lm)}\\,\\mathrm{m}`
-      : `O\\text{ から }${posTex(a.t - state.tO)}`;
-    const cap = `${actionType(a).label} <b>${tex(`P_{${i}} = ${fmt(a.P, 2)}\\,\\mathrm{kN}`)}</b>、`
-      + `${tex(where)}、${up ? '上向き' : '下向き'}`
-      + (Math.abs(tilt) > 0.5 ? `（鉛直から${tilt > 0 ? '右' : '左'}へ ${tex(`\\theta_{${i}} = ${angleTex(tilt)}`)}）` : '');
+    const unknown = actionType(a).unknown;
     let body;
     if (t.zeroReason) {
-      body = texD(`${t.name} = 0`) + `<p class="why">${t.zeroReason}ので、O まわりには回さない。</p>`;
+      body = texD(`${t.lhs} = 0`) + `<p class="why">${t.zeroReason}ので、O まわりには回さない。</p>`;
     } else {
-      let l = `${t.name} = ${t.sym.replace(/^\+/, '')}`;
+      let l = `${t.lhs} = ${t.sym.replace(/^\+/, '')}`;
       if (t.simp) l += ` = ${t.simp.replace(/^\+/, '')}`;
-      const l2 = `\\phantom{${t.name}} = ${t.subst.replace(/^\+/, '')} = ${signedNum(t.value)}\\ \\mathrm{kN\\cdot m}`;
-      body = texD(l) + texD(l2) + `<p class="why">${senseText(t.value)}</p>`;
+      body = texD(l);
+      if (t.subst) {
+        body += texD(`\\phantom{${t.lhs}} = ${t.subst.replace(/^\+/, '')} = ${signed(t.value)}\\ \\mathrm{kN\\cdot m}`);
+      }
+      let why = '';
+      if (t.couple) why = 'モーメント（集中・反力）は、O をどこにとっても同じ大きさで効く。';
+      if (unknown && !t.subst) why += `${tex(t.nm.sym)} が決まれば値が出る。`;
+      else why += senseText(t.value);
+      body += `<p class="why">${why}</p>`;
     }
-    parts.push(`<div class="term" style="--c:${color}"><div class="cap">${cap}</div>${body}</div>`);
+    parts.push(`<div class="term" style="--c:${color}"><div class="cap">${captionOf(a, k)}</div>${body}</div>`);
   });
-  host.innerHTML = parts.join('') || '<p class="why">荷重がありません。「荷重を足す」か、図の棒をダブルクリックしてください。</p>';
+  host.innerHTML = parts.join('') || '<p class="why">荷重がありません。下のボタンか、図の棒をダブルクリックして足してください。</p>';
 
-  const sums = sumLines(st, res);
+  const sums = sumLines(ctxState(), res);
+  const hasUnk = res.unknowns.length > 0;
+  const determined = !hasUnk || res.status === 'solved';
   $('sum').innerHTML = sums.moment.map(texD).join('')
-    + `<p class="why">合計 ${tex('M_{O}')} は <b>${senseText(res.MO, 5e-7)}</b></p>`;
+    + (determined ? `<p class="why">合計 ${tex('M_{O}')} は <b>${senseText(res.MO, 5e-7)}</b></p>` : '');
   $('forces').hidden = state.mode !== 'free';
   $('forces-body').innerHTML = sums.force.map(texD).join('');
-  $('verdict').innerHTML = verdictHtml();
 
-  $('x-note').hidden = state.notation !== 'x';
-  $('l-note').hidden = state.notation !== 'L';
+  $('equil').hidden = !hasUnk;
+  if (hasUnk) {
+    const eqNames = state.mode === 'free'
+      ? `${tex('F_x = 0')}・${tex('F_y = 0')}・${tex('M_{O} = 0')}` : tex('M_{O} = 0');
+    let html = `<p class="why">つり合いの条件 ${eqNames} に未知量を含めて立てると：</p>`;
+    html += sums.equil.map(texD).join('') || texD('0 = 0');
+    if (res.status === 'solved') {
+      html += '<p class="why">これを解くと：</p>' + sums.solution.map(texD).join('');
+      if (res.unknowns.some((u) => u.value < -1e-9)) {
+        html += '<p class="why">負の値は、<b>仮定した向きと逆向き</b>だったということ。</p>';
+      }
+    } else if (res.status === 'under') {
+      html += `<p class="why ng">未知量が決まらない：式の数（${state.mode === 'free' ? 3 : 1} つ）より未知量が多いか、`
+        + `未知量が式に現れない（例: O を通る力は ${tex('M_{O}')} に出てこない）。`
+        + (state.mode === 'pin' ? 'O の位置を変えるか、自由体にして力のつり合いも使う。' : '') + '</p>';
+    } else if (res.status === 'inconsistent') {
+      html += '<p class="why ng">未知量をどう選んでもつり合わない（例: 横向きの力を受け持つ反力が無い）。'
+        + '反力を足すか、仮定の向き（傾き）を変えてみよう。</p>';
+    }
+    $('equil-body').innerHTML = html;
+  }
+  $('verdict').innerHTML = verdictHtml();
 }
 
 function verdictHtml() {
+  if (res.unknowns.length && res.status !== 'solved') {
+    return '<b class="ng">判定できない</b>：未知量が決まらないので、つり合うかどうかも決まらない。';
+  }
+  const withR = res.unknowns.length ? '（未知量を上で求めた値にとれば）' : '';
   const zM = Math.abs(res.MO) < 5e-7;
   const zF = Math.abs(res.Fx) < 5e-7 && Math.abs(res.Fy) < 5e-7;
   if (state.mode === 'pin') {
     return zM
-      ? `<b class="ok">つり合っている</b>：${tex('M_{O} = 0')} なので棒は回らない（荷重の合力は O の反力が受け持つ）。`
+      ? `<b class="ok">つり合っている</b>${withR}：${tex('M_{O} = 0')} なので棒は回らない（力の合力は O の反力が受け持つ）。`
       : `<b class="ng">つり合っていない</b>：${tex('M_{O} \\neq 0')} なので、棒は O を中心に<b>${senseText(res.MO)}</b>に回り始める。`;
   }
   if (zM && zF) {
-    return `<b class="ok">つり合っている</b>：${tex('F_x = F_y = 0')} かつ ${tex('M_{O} = 0')}。この場合、O をどこに動かしても ${tex('M_{O} = 0')} のまま。`;
+    return `<b class="ok">つり合っている</b>${withR}：${tex('F_x = F_y = 0')} かつ ${tex('M_{O} = 0')}。この場合、O をどこに動かしても ${tex('M_{O} = 0')} のまま。`;
   }
   const why = [];
   if (!zF) why.push(`${tex('F \\neq 0')} なので並進する`);
@@ -273,17 +395,18 @@ function verdictHtml() {
 
 function renderStatus() {
   const st = $('status');
-  st.innerHTML = `${tex(`M_{O} = ${signedNum(res.MO)}\\ \\mathrm{kN\\cdot m}`)}`
+  if (res.unknowns.length) {
+    const vals = res.unknowns.map((u) => (u.value === null
+      ? `${u.sym} = ?`
+      : `${u.sym} = ${signed(u.value)}\\,\\mathrm{${u.unit === 'kN' ? 'kN' : 'kN\\cdot m'}}`));
+    st.innerHTML = tex(vals.join(',\\ ')) + `<span class="sense">${res.status === 'solved' ? 'つり合いの式から' : '決まらない'}</span>`;
+    return;
+  }
+  st.innerHTML = `${tex(`M_{O} = ${signed(res.MO)}\\ \\mathrm{kN\\cdot m}`)}`
     + `<span class="sense">${senseText(res.MO, 5e-7)}</span>`
     + (state.mode === 'free'
-      ? `<span class="fsum">${tex(`F_x = ${signedNum(res.Fx)},\\ F_y = ${signedNum(res.Fy)}\\ \\mathrm{kN}`)}</span>`
+      ? `<span class="fsum">${tex(`F_x = ${signed(res.Fx)},\\ F_y = ${signed(res.Fy)}\\ \\mathrm{kN}`)}</span>`
       : '');
-}
-
-function signedNum(x) {
-  const s = fmt(x, 3);
-  if (s === '0') return '0';
-  return x > 0 ? '+' + s : s;
 }
 
 function tex(s) {
@@ -304,7 +427,8 @@ function renderTex(root = document) {
 // ---------------------------------------------------------------- アニメーション
 //
 // 動き始めの加速度のまま、棒が回る（ピンなら O まわり、自由体なら G まわり＋並進）。
-// 止まる条件: 回転角 70° か 移動量 0.45L か 2.2 秒。0.8 秒止めてから繰り返す。
+// 未知量は解いた値を入れる（解ければつり合うので動かない）。
+// 回転角・移動量が図に収まる上限に達したら止め、0.8 秒止めてから繰り返す。
 
 const playBtn = $('play');
 
@@ -334,11 +458,9 @@ function tick(now) {
   const { acc } = anim;
   const T_MAX = ANIM_T * 1.6, HOLD = 0.8;
   let t = (now - anim.t0) / 1000;
-  // 動きの終わりの時刻（回転角・移動量が図に収まる上限に達したところで止める）
   const lim = fig.animLimits(acc.pivot);
-  let tEnd = T_MAX;
   const reach = (limit, a) => (Math.abs(a) > 1e-9 ? Math.sqrt((2 * limit) / Math.abs(a)) : Infinity);
-  tEnd = Math.min(tEnd, reach(lim.theta, acc.alpha), reach(lim.dx, acc.ax), reach(lim.dy, acc.ay));
+  const tEnd = Math.min(T_MAX, reach(lim.theta, acc.alpha), reach(lim.dx, acc.ax), reach(lim.dy, acc.ay));
   if (t > tEnd + HOLD) { anim.t0 = now; t = 0; }
   const tt = Math.min(t, tEnd);
   anim.frame = {
@@ -355,14 +477,13 @@ playBtn.addEventListener('click', () => (anim ? stopAnim() : startAnim()));
 
 // ---------------------------------------------------------------- 操作パネル
 
-$('add-load').addEventListener('click', () => {
-  stopAnim();
-  // 空いている位置（既存の荷重と重ならないところ）を探す
-  const cands = [0.5, 1, 0.25, 0.75, 0, 1 / 3, 2 / 3, 0.1, 0.9];
-  const t = cands.find((c) => !state.actions.some((a) => Math.abs(a.t - c) < 1e-6)) ?? 0.5;
-  addAction(t);
-  update();
-});
+for (const b of document.querySelectorAll('.add-btn')) {
+  b.addEventListener('click', () => {
+    stopAnim();
+    addAction(b.dataset.type);
+    update();
+  });
+}
 $('mode').addEventListener('change', (e) => { stopAnim(); state.mode = e.target.value; update(); });
 $('notation').addEventListener('change', (e) => { state.notation = e.target.value; update(); });
 $('Lmm').addEventListener('change', (e) => {
@@ -392,19 +513,28 @@ for (const p of PRESETS) {
 
 // ---------------------------------------------------------------- URL ハッシュ
 //
-// 例: #m=pin&n=L&L=1000&o=0&a=p,0.5,6,-90;p,1,4,90&e=1&v=0
-//   a の各要素は「種類,位置 t,大きさ,向き dir」。種類 p = 集中荷重（将来 c = 集中モーメント等）
-
+// 例: #m=pin&n=L&L=1000&o=0&a=p,0.5,6,-90;r,1,90;c,0.5,4;m,0,1&e=1&v=0
+//   a の各要素: 集中荷重 p,t,P,dir ／ 未知反力 r,t,dir ／ 集中モーメント c,t,C（反時計まわり正）
+//               ／ 反力モーメント m,t,sgn（仮定の向き ±1）
 
 function buildHash() {
-  const a = state.actions
-    .map((x) => [TYPE_KEY[x.type], fmt(x.t, 6), fmt(x.P, 3), fmt(x.dir, 3)].join(','))
-    .join(';');
+  const a = state.actions.map((x) => {
+    const key = TYPE_KEY[x.type];
+    if (x.type === 'point') return [key, fmt(x.t, 6), fmt(x.P, 3), fmt(x.dir, 3)].join(',');
+    if (x.type === 'reaction') return [key, fmt(x.t, 6), fmt(x.dir, 3)].join(',');
+    if (x.type === 'moment') return [key, fmt(x.t, 6), fmt(x.C, 3)].join(',');
+    return [key, fmt(x.t, 6), x.sgn > 0 ? 1 : -1].join(',');
+  }).join(';');
   return [
     `m=${state.mode}`, `n=${state.notation}`, `L=${fmt(state.Lmm, 3)}`,
     `o=${fmt(state.tO, 6)}`, `a=${a || '-'}`,
     `e=${state.showEach ? 1 : 0}`, `v=${state.showValues ? 1 : 0}`,
   ].join('&');
+}
+
+function snapDir(dir) {
+  const { up, tilt } = decompose(+dir || 0);
+  return compose(up, snapTilt(tilt, 0.01));
 }
 
 function applyHash(h) {
@@ -424,13 +554,14 @@ function applyHash(h) {
   else if (a === '-' || a === '') state.actions = [];
   else {
     state.actions = a.split(';').map((s) => {
-      const [k, t, P, dir] = s.split(',');
-      const type = KEY_TYPE[k];
+      const f = s.split(',');
+      const type = KEY_TYPE[f[0]];
       if (!type) return null;
-      const v = { type, t: exactFrac(clamp01(+t || 0)), P: Math.min(P_MAX, Math.max(0, +P || 0)), dir: +dir || 0 };
-      const { up, tilt } = decompose(v.dir);
-      v.dir = compose(up, snapTilt(tilt, 0.01));
-      return v;
+      const t = exactFrac(clamp01(+f[1] || 0));
+      if (type === 'point') return { type, t, P: Math.min(P_MAX, Math.max(0, +f[2] || 0)), dir: snapDir(f[3]) };
+      if (type === 'reaction') return { type, t, dir: snapDir(f[2]) };
+      if (type === 'moment') return { type, t, C: Math.max(-C_MAX, Math.min(C_MAX, +f[2] || 0)) };
+      return { type, t, sgn: +f[2] < 0 ? -1 : 1 };
     }).filter(Boolean).slice(0, COLORS.length);
   }
   state.sel = 0;

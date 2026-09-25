@@ -266,7 +266,14 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 }
 .fig-label .katex { font-size: 1.12em; }
 .fig-label.small .katex { font-size: 0.88em; }
-.fig-label.bg { background: #fffdf7e6; border-radius: 4px; padding: 1px 3px; }
+/* 記号は背景を塗らず、図の地の色で縁取って線の上でも読めるようにする */
+.fig-label {
+  --halo: #faf6ee;
+  text-shadow:
+    -1.5px -1.5px 0 var(--halo), 1.5px -1.5px 0 var(--halo), -1.5px 1.5px 0 var(--halo), 1.5px 1.5px 0 var(--halo),
+    0 -2px 0 var(--halo), 0 2px 0 var(--halo), -2px 0 0 var(--halo), 2px 0 0 var(--halo),
+    0 0 4px var(--halo);
+}
 .fig-label.muted { color: var(--muted) !important; }
 
 .fig-foot {
@@ -333,7 +340,14 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .lf .u { font-size: 0.74rem; }
 .pos-mm { font-size: 0.72rem; font-variant-numeric: tabular-nums; }
 .del { margin-left: auto; padding: 3px 10px; }
-.add-row { margin-top: 12px; justify-content: space-between; }
+.load-row .kind { font-size: 0.72rem; color: var(--muted); margin-right: 2px; }
+.load-row.type-reaction, .load-row.type-rmoment { border-left-style: dashed; background: #fffcf4; }
+.solved { font-size: 0.85rem; color: var(--ink); }
+.muted-note { font-size: 0.72rem; color: var(--muted); }
+.len-row { margin-top: 6px; }
+.formula.equil { border-color: #2f8f6f55; background: #f1f7f2; }
+.why.ng { color: var(--accent-strong); }
+.add-row { margin-top: 12px; }
 .later { margin: 10px 0 0; font-size: 0.74rem; }
 code {
   font-family: var(--mono-font);

@@ -13,7 +13,7 @@
 <header class="site-head">
   <a class="home-link" href="../index.html">← sm-lab トップへ</a>
   <h1>モーメントのつり合い</h1>
-  <p class="lede">棒に荷重を置いて、点 O まわりのモーメントを式と円弧の矢印で確かめます。O も荷重も図の上で直接ドラッグでき、「動かしてみる」で棒がどちらへ回り出すかが見られます。</p>
+  <p class="lede">棒に荷重を置いて、点 O まわりのモーメントを式と円弧の矢印で確かめます。未知反力を置けばつり合いの式から求まり、「動かしてみる」で棒がどちらへ回り出すかが見られます。</p>
 </header>
 
 <main class="lab">
@@ -22,7 +22,7 @@
   <section class="card fig-card">
     <p class="kicker">Free body</p>
     <h2>棒と荷重</h2>
-    <p class="sub">矢印の<b>先端</b>を上下に引くと大きさと向き、<b>左右に大きく引くと斜め</b>になります（<span class="tex" data-tex="\frac{\pi}{6},\ \frac{\pi}{4},\ \frac{\pi}{3},\ \frac{\pi}{2}"></span> に吸い付きます）。矢印の<b>軸</b>を左右に引くと作用点、<b>O の丸</b>を引くと回転中心が動きます（<span class="tex" data-tex="L/2,\ L/3,\ L/4,\ L/5,\ L/10"></span> の位置に吸い付きます）。棒をダブルクリックすると荷重が増えます。</p>
+    <p class="sub">矢印の<b>先端</b>を上下に引くと大きさと向き、<b>左右に大きく引くと斜め</b>になります（30°・45°・60°・90° に吸い付きます）。モーメントの<b>円弧の先端</b>は回すと大きさと向きが変わります。矢印の<b>軸</b>・円弧の<b>中心</b>を左右に引くと作用点、<b>O の丸</b>を引くと回転中心が動きます（長さの 1/2・1/3・1/4・1/5・1/10 の位置に吸い付きます）。破線は大きさが未知の反力です。棒をダブルクリックすると集中荷重が増えます。</p>
 
     <div class="toolbar">
       <label class="seg-label" for="mode">支え方</label>
@@ -33,7 +33,7 @@
       <label class="seg-label" for="notation">長さの記号</label>
       <select id="notation">
         <option value="L">L で表す（O からの距離）</option>
-        <option value="x">x 座標で表す（左端が原点）</option>
+        <option value="x">x で表す（切り取った自由体の長さ）</option>
       </select>
       <button class="btn btn-accent play" id="play" type="button" aria-pressed="false"><span class="icon" aria-hidden="true">▶</span><span class="lbl">動かしてみる</span></button>
     </div>
@@ -53,27 +53,35 @@
   <section class="card controls-card">
     <p class="kicker">Loads</p>
     <h2>荷重</h2>
-    <p class="sub">位置は <code>2L/3</code>・<code>L/4</code>・<code>0.35L</code> のように L で、または数字だけ（mm）で入力できます。傾きは鉛直から測り、右へ倒すと正です。</p>
+    <p class="sub">位置は <code>2L/3</code>・<code>x/4</code>・<code>0.35L</code> のように長さの分数で、または数字だけ（mm）で入力できます。傾きは鉛直から度で測り、右へ倒すと正です。未知反力・反力モーメントは「仮定の向き」を決めておけば、大きさはつり合いの式から求まります（負なら逆向き）。</p>
     <div class="toolbar toolbar-tight" id="presets"></div>
     <div class="load-list" id="load-list"></div>
     <div class="toolbar toolbar-tight add-row">
-      <button class="btn btn-accent" id="add-load" type="button">＋ 荷重を足す</button>
-      <label class="lf len"><span>棒の長さ <span class="tex" data-tex="L"></span></span>
+      <button class="btn btn-accent add-btn" data-type="point" type="button">＋ 集中荷重</button>
+      <button class="btn add-btn" data-type="reaction" type="button">＋ 未知反力</button>
+      <button class="btn btn-accent add-btn" data-type="moment" type="button">＋ 集中モーメント</button>
+      <button class="btn add-btn" data-type="rmoment" type="button">＋ 反力モーメント</button>
+    </div>
+    <div class="toolbar toolbar-tight len-row">
+      <label class="lf len"><span>長さ <span class="tex" id="len-sym" data-tex="L"></span></span>
         <input id="Lmm" type="number" min="1" step="100"><span class="u">mm</span></label>
     </div>
-    <p class="sub later">分布荷重・集中モーメントは今後追加予定です。</p>
+    <p class="sub later">分布荷重は今後追加予定です。</p>
   </section>
 
   <!-- ------------------------------------------------ 式 -->
   <section class="card notes-card">
     <p class="kicker">Formulas</p>
     <h2><span class="tex" data-tex="O"></span> 点まわりのモーメント</h2>
-    <p class="sub" id="l-note">反時計まわりを正とします。L 表記では「O からの距離 × 力の鉛直成分」を求め、回す向きで符号を決めます。</p>
-    <p class="sub" id="x-note" hidden>反時計まわりを正とします。x 座標で書くと、腕の長さ <span class="tex" data-tex="x_i - x_O"></span> の符号が O の左右を自動的に受け持つので、式の符号は「上向きが +、下向きが −」だけで決まります。</p>
+    <p class="sub">反時計まわりを正とします。力は「O からの距離 × 力の鉛直成分」を求め、回す向きで符号を決めます。<span class="tex" data-tex="M_O(P)"></span> は「<span class="tex" data-tex="P"></span> による O まわりのモーメント」の意味です。長さの記号を x にすると、切り取った自由体の長さを x として同じ形で書きます。</p>
     <div class="terms" id="terms"></div>
     <div class="formula sum">
       <div class="cap">合計</div>
       <div id="sum"></div>
+    </div>
+    <div class="formula equil" id="equil" hidden>
+      <div class="cap">未知量を求める（つり合いの式）</div>
+      <div id="equil-body"></div>
     </div>
     <div class="formula" id="forces" hidden>
       <div class="cap">力のつり合い（自由体。右向き・上向きが正）</div>
