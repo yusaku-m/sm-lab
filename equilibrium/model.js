@@ -317,6 +317,8 @@ export function symbolIndex(actions, k) {
 /** k 番目の荷重の記号。その種類が 1 つだけなら添え字なし（P, θ, R, M, M_R）。 */
 export function namesOf(actions, k) {
   const a = actions[k];
+  // 呼ぶ側が記号を決めたいとき（sfd-bmd/ は曲げモーメント M と衝突しないよう M_0, M_1 … にする）
+  if (a.name) return a.name;
   const n = actions.filter((b) => b.type === a.type).length;
   return ACTION_TYPES[a.type].names(n === 1 ? null : symbolIndex(actions, k));
 }

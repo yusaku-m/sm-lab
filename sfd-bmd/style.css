@@ -1,0 +1,39 @@
+/* sfd-bmd/ だけの追加。テーマ・カード・フォーム・図の土台は ../equilibrium/style.css を読んでいる */
+
+.cut-lf { flex: 1 1 260px; }
+.cut-lf input[type="range"] { flex: 1 1 auto; min-width: 120px; accent-color: var(--ink); }
+.cut-pos { font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 9em; }
+
+.figure + .plot-head { margin-top: 12px; }
+.plot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 8px 2px 4px;
+}
+.plot-name { font-family: var(--display-font); font-size: 0.98rem; }
+.plot-conv { font-size: 0.74rem; color: var(--muted); }
+.figure.plot svg { touch-action: pan-y; }
+
+.list-head {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  margin: 14px 0 6px;
+}
+.load-row.type-support { border-left-color: #2f8f6f; }
+
+.formula .cap b { color: var(--ink); }
+.val-v { color: #245b8d; }
+.val-m { color: #bd442c; }
+
+@media (max-width: 760px) {
+  .cut-lf span { display: none; }
+  .cut-pos { min-width: 0; }
+  .plot-conv { font-size: 0.7rem; }
+}
+
+/* 反力が決まらないとき（不静定・不安定）はグラフを薄くする */
+.figure.dim { opacity: 0.45; }
