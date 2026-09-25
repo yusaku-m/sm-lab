@@ -175,15 +175,8 @@ export class MomentFigure {
       s.push(`<rect x="${x1}" y="${RY - ROD_H / 2 + 1}" width="${x2 - x1}" height="${ROD_H - 2}" fill="#fffdf7"/>`);
       s.push(`<circle cx="${ox}" cy="${RY}" r="2.6" fill="${INK}"/>`);
     }
-    if (state.mode === 'free') {
-      const gx = X(0.5);
-      s.push(`<circle cx="${gx}" cy="${RY}" r="5.5" fill="#fffdf7" stroke="${INK}" stroke-width="1.4"/>
-        <path d="M${gx} ${RY - 5.5} A5.5 5.5 0 0 1 ${gx + 5.5} ${RY} L${gx} ${RY} z M${gx} ${RY + 5.5} A5.5 5.5 0 0 1 ${gx - 5.5} ${RY} L${gx} ${RY} z" fill="${INK}"/>`);
-    }
+    // 自由体でも重心 G の印・記号は描かない（ユーザーの指示。動かすときの回転中心としてだけ使う）
     s.push('</g>');
-    if (state.mode === 'free' && !anim) {
-      labels.push({ key: 'G', tex: 'G', x: X(0.5) + 14, y: RY + 22, cls: 'muted' });
-    }
 
     // 自由体では O はただの「モーメントを測る点」なので、破線の丸と十字で示す
     if (state.mode === 'free' && !anim) {
