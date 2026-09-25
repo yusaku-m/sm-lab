@@ -11,7 +11,7 @@
 //   反力モーメント … 破線の円弧（角度一定。仮定した回す向き）
 //   分布荷重     … 棒に向かう矢印の列と、その頭をつなぐ線（高さ ∝ 強さ）。下向きは棒の上に、
 //                    上向きは棒の下に描く（資料・beam/ と同じく荷重の側から棒を押す描き方）。
-//                    選んでいるときだけ、合力（等価な集中荷重）を図心に破線の矢印で示す
+//                    「分布荷重の表示」で、合力（読み替えた集中荷重）だけ／両方にも切り替えられる
 //
 // 操作:
 //   O の丸         … 左右ドラッグで回転中心（モーメントの中心）を動かす
@@ -74,6 +74,16 @@ function distHeight(a, t) {
 
 /** 分布荷重を描く側（下向きの荷重は棒の上、上向きは棒の下）。画面座標の y の向き */
 const distSide = (a) => (a.up ? 1 : -1);
+
+/**
+ * 合力の矢印の長さ [px]。合力だけを描くとき（solid）は集中荷重と同じ縮尺で、先端のドラッグと対応させる。
+ * 分布荷重に添えるとき（破線）は図が縦に伸びすぎないよう RESULT_MAX で頭打ちにする。
+ */
+function resultLen(a, state, solid) {
+  const F = distResultant(a, state.Lm).F;
+  if (solid) return Math.min(P_MAX * PX_PER_KN, F * PX_PER_KN);
+  return Math.min(RESULT_MAX, Math.max(28, F * PX_PER_KN));
+}
 
 /** 力の矢印の長さ [px] */
 function forceLen(a) {
@@ -315,7 +325,43 @@ export class MomentFigure {
     labels.push({ key: `P${k}`, tex: nm.sym + valTex, x: lp.x, y: lp.y, color });
   }
 
-  _drawDist(s, labels, { a, k, color, nm, active, tf, anim, hs, state }) {
+  /**
+   * 分布荷重。state.distView で描き分ける:
+   *   dist … 分布荷重のみ（既定）
+   *   res  … 合力（読み替えた集中荷重）のみ。実線の矢印で、先端で強さ・軸で区間ごと移動
+   *   both … 分布荷重と、合力の破線の矢印
+   */
+  _drawDist(s, labels, o) {
+    const { a, k, color, nm, tf, anim, hs, state } = o;
+    const view = state.distView || 'dist';
+    if (view !== 'res') this._drawDistBody(s, labels, o);
+    const b = a.t2 - a.t1;
+    if (view === 'dist' || b < 1e-9) return;
+
+    // 合力（等価な集中荷重）。図心から荷重の向きへ、集中荷重と同じく棒の面から描く
+    const solid = view === 'res';
+    const side = distSide(a);
+    const { F, tc } = distResultant(a, state.Lm);
+    const len = resultLen(a, state, solid);
+    const yb = RY - side * (ROD_H / 2);
+    const p1 = tf(X(tc), yb), p2 = tf(X(tc), yb - side * len);
+    const w = o.active ? 3.4 : 2.6;
+    if (len > 0.5) {
+      s.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${color}" stroke-width="${solid ? w : 2}" stroke-linecap="round"${solid ? '' : ' stroke-dasharray="6 4" opacity="0.85"'} marker-end="url(#mf-head)"/>`);
+    }
+    if (solid && !anim) {
+      s.push(`<line class="grab" data-k="${k}" data-part="shaft" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="transparent" stroke-width="${18 * hs}"/>`);
+      this._tipHandle(s, k, p2, color, o.active, hs);
+    }
+    s.push(`<circle cx="${p1.x}" cy="${p1.y}" r="3.3" fill="${color}" pointer-events="none"/>`);
+    const Wtex = distResultantTex(a, nm.sym, lengthSym(state));
+    labels.push({
+      key: `W${k}`, tex: `${Wtex}${state.showValues ? `=${fmt(F, 2)}\\,\\mathrm{kN}` : ''}`,
+      x: p2.x + 34, y: p2.y - side * 12, color, small: !solid,
+    });
+  }
+
+  _drawDistBody(s, labels, { a, k, color, nm, active, tf, anim, hs, state }) {
     const side = distSide(a);                       // 荷重を描く側（画面の y の向き）
     const y0 = RY + side * (ROD_H / 2 + DIST_GAP);  // 矢じりの先（棒の面の少し外）
     const pt = (t, h) => tf(X(t), y0 + side * h);
@@ -356,21 +402,6 @@ export class MomentFigure {
       this._tipHandle(s, k, { x: X(tTip), y: y0 + side * hMax }, color, active, hs);
     }
 
-    // 合力（等価な集中荷重）。選んでいるときだけ、図心から荷重の向きへ破線の矢印で示す
-    const { F, tc } = distResultant(a, state.Lm);
-    if (active && !anim && b > 1e-9) {
-      const len = Math.min(RESULT_MAX, Math.max(28, F * PX_PER_KN));
-      const yb = RY - side * (ROD_H / 2);           // 反対側の棒の面から
-      const p1 = { x: X(tc), y: yb }, p2 = { x: X(tc), y: yb - side * len };
-      s.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${color}" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mf-head)" opacity="0.85"/>`);
-      s.push(`<circle cx="${p1.x}" cy="${p1.y}" r="3" fill="${color}" pointer-events="none"/>`);
-      const Wtex = distResultantTex(a, nm.sym, lengthSym(state));
-      labels.push({
-        key: `W${k}`, tex: `${Wtex}${state.showValues ? `=${fmt(F, 2)}\\,\\mathrm{kN}` : ''}`,
-        x: p2.x + 30, y: p2.y - side * 10, color, small: true,
-      });
-    }
-
     // 記号は強さの丸より外側（棒から遠い側）。丸に重ねると持ち手が隠れ、横に置くと端の四角に重なる
     const tLab = a.shape === 'r' ? a.t2 : a.shape === 'l' ? a.t1 : (a.t1 + a.t2) / 2;
     const lp = tf(X(tLab), y0 + side * (hMax + 26));
@@ -403,12 +434,15 @@ export class MomentFigure {
         add(X(a.t) - MOM_R, RY + MOM_R);
       } else if (isDist(a)) {
         const side = distSide(a);
-        const h = ROD_H / 2 + DIST_GAP + Math.max(DIST_MIN_H, a.w * PX_PER_KNPM) + 44; // 記号のぶん
-        add(X(a.t1) - 20, RY + side * h);
-        add(X(a.t2) + 20, RY + side * h);
-        if (k === state.sel) {
-          const len = Math.min(RESULT_MAX, Math.max(28, distResultant(a, state.Lm).F * PX_PER_KN));
-          add(X(distResultant(a, state.Lm).tc), RY - side * (ROD_H / 2 + len));
+        const view = state.distView || 'dist';
+        if (view !== 'res') {
+          const h = ROD_H / 2 + DIST_GAP + Math.max(DIST_MIN_H, a.w * PX_PER_KNPM) + 44; // 記号のぶん
+          add(X(a.t1) - 20, RY + side * h);
+          add(X(a.t2) + 20, RY + side * h);
+        }
+        if (view !== 'dist') {
+          const len = resultLen(a, state, view === 'res');
+          add(X(distResultant(a, state.Lm).tc) + 60, RY - side * (ROD_H / 2 + len + 24));
         }
       }
     });
@@ -470,7 +504,8 @@ export class MomentFigure {
       const color = COLORS[k % COLORS.length];
       if (isForce(a)) fromO(a.t, `dl${k}`, color);
       if (isDist(a) && a.t2 - a.t1 > 1e-9) {
-        if (!isTotal(a.t1, a.t2)) {
+        // 合力だけを描くときは区間が図に無いので、区間の長さの寸法線も引かない
+        if (!isTotal(a.t1, a.t2) && state.distView !== 'res') {
           rows.push({ ta: a.t1, tb: a.t2, tex: posTex(a.t2 - a.t1, lsym), key: `db${k}`, color });
         }
         fromO(distResultant(a, state.Lm).tc, `dl${k}`, color);
@@ -706,7 +741,15 @@ export class MomentFigure {
 
   /** 分布荷重のドラッグ。a は書き換えてよい複製 */
   _applyDist(a, d, p, tol) {
-    if (d.kind === 'tip') {
+    if (d.kind === 'tip' && this.state.distView === 'res') {
+      // 合力の矢印の先端。集中荷重と同じく、矢印の長さ＝合力で、強さ w はそこから逆算する
+      const dy = RY - p.y; // 上が正
+      const off = ROD_H / 2;
+      if (Math.abs(dy) > off) a.up = dy > 0;
+      const F = Math.min(P_MAX, Math.round(Math.max(0, Math.abs(dy) - off) / PX_PER_KN));
+      const per = distResultant({ ...a, w: 1 }, this.state.Lm).F; // w = 1 kN/m のときの合力
+      if (per > 1e-9) a.w = Math.min(W_MAX, Math.round((F / per) * 10) / 10);
+    } else if (d.kind === 'tip') {
       // 棒の面からの距離が強さ。棒の反対側まで引くと向きが変わる（下向きの荷重は棒の上に描く）
       const dy = RY - p.y; // 上が正
       const off = ROD_H / 2 + DIST_GAP;

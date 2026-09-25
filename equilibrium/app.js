@@ -21,6 +21,7 @@ const DEFAULT = () => ({
   ],
   showEach: true,
   showValues: false,
+  distView: 'dist', // 分布荷重の表示: 'dist'（分布荷重のみ）| 'res'（合力＝読み替えた集中荷重のみ）| 'both'
 });
 
 const PRESETS = [
@@ -239,6 +240,9 @@ function syncList() {
   setIfIdle($('Lmm'), String(state.Lmm));
   $('len-sym').dataset.tex = lsymNow();
   renderTex($('len-sym').parentElement);
+  const hasDist = state.actions.some((a) => a.type === 'dist');
+  $('dist-view').hidden = $('dist-view-label').hidden = !hasDist;
+  $('dist-view').value = state.distView;
   $('show-each').checked = state.showEach;
   $('show-values').checked = state.showValues;
 }
@@ -553,6 +557,7 @@ $('Lmm').addEventListener('change', (e) => {
   e.target.value = String(state.Lmm);
   update();
 });
+$('dist-view').addEventListener('change', (e) => { state.distView = e.target.value; update(); });
 $('show-each').addEventListener('change', (e) => { state.showEach = e.target.checked; update(); });
 $('show-values').addEventListener('change', (e) => { state.showValues = e.target.checked; update(); });
 
@@ -575,6 +580,7 @@ for (const p of PRESETS) {
 // ---------------------------------------------------------------- URL ハッシュ
 //
 // 例: #m=pin&n=L&L=1000&o=0&a=p,0.5,6,-90;r,1,90;c,0.5,4;m,0,1&e=1&v=0
+//   dv … 分布荷重の表示（res | both。既定の「分布荷重のみ」のときは書かない）
 //   a の各要素: 集中荷重 p,t,P,dir ／ 未知反力 r,t,dir ／ 集中モーメント c,t,C（反時計まわり正）
 //               ／ 反力モーメント m,t,sgn（仮定の向き ±1）
 //               ／ 分布荷重 d,t1,t2,w,形（u|r|l）,向き（1 = 上向き、-1 = 下向き）
@@ -592,7 +598,7 @@ function buildHash() {
     `m=${state.mode}`, `n=${state.notation}`, `L=${fmt(state.Lmm, 3)}`,
     `o=${fmt(state.tO, 6)}`, `a=${a || '-'}`,
     `e=${state.showEach ? 1 : 0}`, `v=${state.showValues ? 1 : 0}`,
-  ].join('&');
+  ].concat(state.distView !== 'dist' ? [`dv=${state.distView}`] : []).join('&');
 }
 
 function snapDir(dir) {
@@ -612,6 +618,7 @@ function applyHash(h) {
   state.tO = isFinite(o) ? exactFrac(clamp01(o)) : d.tO;
   state.showEach = q.get('e') !== '0';
   state.showValues = q.get('v') === '1';
+  state.distView = ['res', 'both'].includes(q.get('dv')) ? q.get('dv') : 'dist';
   const a = q.get('a');
   if (a === null) state.actions = d.actions;
   else if (a === '-' || a === '') state.actions = [];
