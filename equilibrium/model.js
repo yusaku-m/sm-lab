@@ -8,7 +8,8 @@
 //   長さの記号 lsym は 'L'（棒全体）か 'x'（切り取った自由体の長さ）。どちらも書き方は同じで、
 //   位置・腕の長さを lsym の分数で書く（例: \frac{5}{12}L ／ \frac{5}{12}x）。
 //
-// 荷重の種類は ACTION_TYPES に登録する（集中荷重・未知反力・集中モーメント・反力モーメント）。
+// 荷重の種類は ACTION_TYPES に登録する（集中荷重・未知反力・集中モーメント・反力モーメント・分布荷重）。
+// 分布荷重の強さ w は kN/m、区間は t1..t2（t と同じく長さを 1 とした無次元量）。
 // 未知量（反力・反力モーメント）は「仮定した向きの大きさ u」を未知数にとり、
 // つり合いの式（ピン: M_O = 0、自由体: F_x = F_y = M_O = 0）から解く。
 // 合計・式・アニメーションの側は、各種類の effect()/terms()/names() しか見ていない。
@@ -209,7 +210,8 @@ const SIGN = (b) => (b ? '+' : '-');
 //   names(i)          … 記号（i = null なら添え字なし。その種類が 1 つだけのとき）
 //                       { sym, theta?, x? }
 //   create(t)         … 新しく足すときの既定値
-//   effect(a, tO, u)  … { fx, fy [kN], m [kN·L] }（O まわり。未知量は大きさ u のときの値）
+//   effect(a, tO, u, Lm) … { fx, fy [kN], m [kN·L] }（O まわり。未知量は大きさ u のときの値。
+//                       Lm = 長さ [m]。分布荷重の合力 = w × 区間の長さ にだけ要る）
 //   terms(a, ctx)     … 解説の式の部品（forceTerms / momentTerms を参照）
 
 export const ACTION_TYPES = {
@@ -239,7 +241,8 @@ export const ACTION_TYPES = {
     unknown: false,
     names: (i) => (i === null ? { sym: 'M' } : { sym: `M_{${i}}` }),
     create: (t = 0.5) => ({ type: 'moment', t, C: 4 }),
-    effect: (a) => ({ fx: 0, fy: 0, m: a.C }),
+    // m は kN·L 単位（呼ぶ側で Lm を掛ける）なので、kN·m の C は Lm で割っておく
+    effect: (a, tO, u, Lm) => ({ fx: 0, fy: 0, m: a.C / Lm }),
     terms: (a, ctx) => momentTerms(a.C >= 0, Math.abs(a.C), ctx),
   },
   rmoment: {
@@ -249,10 +252,55 @@ export const ACTION_TYPES = {
     // Beam.py と同じく M_{R1} の形（M_{R_1} ではない）
     names: (i) => (i === null ? { sym: 'M_{R}' } : { sym: `M_{R${i}}` }),
     create: (t = 0) => ({ type: 'rmoment', t, sgn: 1 }),
-    effect: (a, tO, u) => ({ fx: 0, fy: 0, m: a.sgn * u }),
+    effect: (a, tO, u, Lm) => ({ fx: 0, fy: 0, m: (a.sgn * u) / Lm }),
     terms: (a, ctx) => momentTerms(a.sgn > 0, ctx.u, ctx),
   },
+  dist: {
+    label: '分布荷重',
+    unknown: false,
+    // Grading の Action.DistributedLoad（強さ w_0）に合わせて w
+    names: (i) => (i === null ? { sym: 'w' } : { sym: `w_{${i}}` }),
+    create: () => ({ type: 'dist', t1: 0.5, t2: 1, w: 4, shape: 'u', up: false }),
+    effect: (a, tO, u, Lm) => {
+      const { F, tc } = distResultant(a, Lm);
+      const fy = a.up ? F : -F;
+      return { fx: 0, fy, m: (tc - tO) * fy };
+    },
+    terms: (a, ctx) => distTerms(a, ctx),
+  },
 };
+
+/**
+ * 分布の形。k = 合力の係数（合力 = k·w·区間の長さ）、c = 図心の位置（始点から、区間の長さに対する比）
+ *   u … 等分布、r … 三角形（右＝終点側が最大）、l … 三角形（左＝始点側が最大）
+ */
+export const DIST_SHAPES = {
+  u: { label: '等分布', k: [1, 1], c: [1, 2] },
+  r: { label: '三角形（右が最大）', k: [1, 2], c: [2, 3] },
+  l: { label: '三角形（左が最大）', k: [1, 2], c: [1, 3] },
+};
+
+/** 分布荷重の合力 F [kN]（向きは持たない）と、その作用点（分布の図心）tc */
+export function distResultant(a, Lm) {
+  const sh = DIST_SHAPES[a.shape] || DIST_SHAPES.u;
+  const b = Math.max(0, a.t2 - a.t1);
+  return {
+    F: (sh.k[0] / sh.k[1]) * a.w * b * Lm,
+    tc: a.t1 + (sh.c[0] / sh.c[1]) * b,
+    b, sh,
+  };
+}
+
+/** 合力の係数（合力 = c·w·L の c。等分布で区間 L/2 なら 1/2、三角形ならさらに 1/2） */
+function distCoef(a) {
+  const sh = DIST_SHAPES[a.shape] || DIST_SHAPES.u;
+  return mulCoef(makeCoef(sh.k[0], sh.k[1], 1), coefOf(Math.max(0, a.t2 - a.t1)));
+}
+
+/** 合力の TeX（例: \frac{1}{2}wL）。図の合力の矢印のラベルに使う */
+export function distResultantTex(a, S, lsym = 'L') {
+  return coefTex(distCoef(a), `${S}${lsym}`);
+}
 
 export function actionType(a) {
   return ACTION_TYPES[a.type];
@@ -352,6 +400,51 @@ function momentTerms(ccw, mag, ctx) {
   };
 }
 
+/**
+ * 分布荷重。合力（分布の面積）に置きかえ、図心に作用する集中荷重として O まわりのモーメントを出す。
+ *   M_O(w) = ∓(w × 区間の長さ [× 1/2]) × O から図心までの距離
+ * lin は w·L² の項（p = 2）。pre は「合力に置きかえる」説明の部品。
+ */
+function distTerms(a, ctx) {
+  const { tO, Lm, nm, lsym } = ctx;
+  const S = nm.sym;
+  const { F, tc, b, sh } = distResultant(a, Lm);
+  const arm = tc - tO;
+  const up = !!a.up;
+  const bC = coefOf(b);
+  const WC = distCoef(a);                   // 合力 = WC·w·L
+  const armC = coefOf(Math.abs(arm));
+  const half = sh.k[1] === 2 ? '\\frac{1}{2}\\times ' : '';
+  const Wsym = `${half}${S}\\times ${coefTex(bC, lsym)}`; // ½ × w × 区間の長さ
+  const Wsimp = coefTex(WC, `${S}${lsym}`);                // ½wL など
+  const value = arm * (up ? F : -F) * Lm;
+
+  const out = { value, zeroReason: null, lin: null, dist: true };
+  if (b < 1e-9) out.zeroReason = '区間の長さが 0 で、合力が 0';
+  else if (Math.abs(arm) < 1e-9) out.zeroReason = '合力の作用点（分布の図心）が O にある（腕の長さが 0）';
+
+  out.pre = {
+    W: `${Wsym}${Wsym !== Wsimp ? ' = ' + Wsimp : ''} = ${fmt(F)}\\ \\mathrm{kN}`,
+    at: posTex(arm, lsym),
+    shape: sh.label,
+  };
+  const ccw = arm * (up ? 1 : -1) > 0;
+  out.sym = `${SIGN(ccw)}${Wsimp}\\times ${coefTex(armC, lsym)}`;
+  const c = mulCoef(WC, armC);
+  const simp = `${SIGN(ccw)}${coefTex(c, `${S}${lsym}^{2}`)}`;
+  out.simp = simp !== out.sym ? simp : null;
+  out.lin = { c, neg: !ccw, sym: S, p: 2 };
+  out.subst = `${SIGN(ccw)}${fmt(F)}\\times ${fmt(Math.abs(arm))}\\times ${fmt(Lm)}`;
+  out.fx = null;
+  out.fy = b < 1e-9 ? null : {
+    sym: `${up ? '+' : '-'}${Wsimp}`,
+    subst: `${up ? '+' : '-'}${fmt(F)}`,
+    c: WC, neg: !up, S,
+  };
+  if (out.zeroReason) out.lin = null;
+  return out;
+}
+
 // ---------------------------------------------------------------- 未知量を解く
 
 /**
@@ -416,7 +509,7 @@ export function analyze(state) {
   actions.forEach((a, k) => {
     const T = actionType(a);
     const j = unkIdx.indexOf(k);
-    const e = T.effect(a, tO, 1);
+    const e = T.effect(a, tO, 1, Lm);
     for (const eq of eqs) {
       const v = e[eq.key] * scaleOf(eq.key);
       if (j >= 0) eq.coefs[j] += v;
@@ -449,9 +542,9 @@ export function analyze(state) {
   actions.forEach((a, k) => {
     const T = actionType(a);
     const u = uMotion(k);
-    const e = T.effect(a, tO, u);
+    const e = T.effect(a, tO, u, Lm);
     Fx += e.fx; Fy += e.fy; MO += e.m * Lm;
-    MG += T.effect(a, 0.5, u).m * Lm;
+    MG += T.effect(a, 0.5, u, Lm).m * Lm;
   });
 
   const unknowns = unkIdx.map((k, j) => ({
@@ -474,8 +567,15 @@ function stripPlus(s) {
 
 /** lin 項（±c·sym·L^p）の TeX */
 function linTex(l, withL = true, lsym = 'L') {
-  const unit = !withL || l.p === 0 ? l.sym : l.p === 1 ? `${l.sym}${lsym}` : `\\frac{${l.sym}}{${lsym}}`;
-  return `${l.neg ? '-' : '+'}${coefTex(l.c, unit)}`;
+  return `${l.neg ? '-' : '+'}${coefTex(l.c, withL ? powUnit(l.sym, l.p, lsym) : l.sym)}`;
+}
+
+/** sym·L^p の TeX（分布荷重で p = 2、未知量で割ると p = -1 などになる） */
+function powUnit(sym, p, lsym) {
+  if (p === 0) return sym;
+  if (p === 1) return `${sym}${lsym}`;
+  if (p > 1) return `${sym}${lsym}^{${p}}`;
+  return `\\frac{${sym || 1}}{${p === -1 ? lsym : `${lsym}^{${-p}}`}}`;
 }
 
 /** 数値の一次式「既知の値 ± 係数×未知量」の TeX */
@@ -561,11 +661,16 @@ export function sumLines(state, res) {
 function momentSym(state, live) {
   if (!live.length) return '';
   const lsym = lengthSym(state);
-  const withL = live.filter((t) => t.lin && t.lin.p === 1 && !isZero(t.lin.c));
-  const noL = live.filter((t) => t.lin && t.lin.p === 0);
+  // 長さの次数ごとにくくる（分布荷重 wL² → 力 PL → モーメント M の順）
   let s = '';
-  if (withL.length === 1) s = linTex(withL[0].lin, true, lsym);
-  else if (withL.length > 1) s = `+\\left(${stripPlus(withL.map((t) => linTex(t.lin, false)).join(' '))}\\right)${lsym}`;
+  for (const p of [2, 1]) {
+    const g = live.filter((t) => t.lin && t.lin.p === p && !isZero(t.lin.c));
+    if (g.length === 1) s += ' ' + linTex(g[0].lin, true, lsym);
+    else if (g.length > 1) {
+      s += ` +\\left(${stripPlus(g.map((t) => linTex(t.lin, false)).join(' '))}\\right)${powUnit('', p, lsym)}`;
+    }
+  }
+  const noL = live.filter((t) => t.lin && t.lin.p === 0 && !isZero(t.lin.c));
   s += noL.map((t) => ' ' + linTex(t.lin)).join('');
   return stripPlus(s.trim());
 }

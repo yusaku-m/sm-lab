@@ -2,8 +2,9 @@
 import {
   ACTION_TYPES, actionType, analyze, sumLines, decompose, compose, posText, fmt, namesOf,
   senseText, accelerations, clamp01, snapTilt, ANIM_T, posTex, angleTex, lengthSym, signed,
+  DIST_SHAPES,
 } from './model.js';
-import { MomentFigure, COLORS, P_MAX, C_MAX } from './figure.js';
+import { MomentFigure, COLORS, P_MAX, C_MAX, W_MAX } from './figure.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,6 +54,14 @@ const PRESETS = [
     ] }),
   },
   {
+    label: '等分布荷重の単純支持（自由体）',
+    make: () => ({ mode: 'free', tO: 0, actions: [
+      { type: 'reaction', t: 0, dir: 90 },
+      { type: 'reaction', t: 1, dir: 90 },
+      { type: 'dist', t1: 0, t2: 1, w: 6, shape: 'u', up: false },
+    ] }),
+  },
+  {
     label: '片持ちの反力（自由体）',
     make: () => ({ mode: 'free', tO: 0, actions: [
       { type: 'reaction', t: 0, dir: 90 },
@@ -71,8 +80,8 @@ const PRESETS = [
 ];
 
 // URL ハッシュでの荷重の種類の略号（applyHash() が起動直後に使うのでここで宣言する）
-const TYPE_KEY = { point: 'p', reaction: 'r', moment: 'c', rmoment: 'm' };
-const KEY_TYPE = { p: 'point', r: 'reaction', c: 'moment', m: 'rmoment' };
+const TYPE_KEY = { point: 'p', reaction: 'r', moment: 'c', rmoment: 'm', dist: 'd' };
+const KEY_TYPE = { p: 'point', r: 'reaction', c: 'moment', m: 'rmoment', d: 'dist' };
 
 // update() が触る let はシーン生成より前に宣言しておく（mohr/ と同じ理由）
 let state = DEFAULT();
@@ -120,6 +129,16 @@ function draw() {
 
 function addAction(type = 'point', t = null) {
   if (state.actions.length >= COLORS.length) return;
+  if (type === 'dist') {
+    // 既存の分布荷重と重ならない区間を探す（右半分 → 左半分 → 全長）
+    const a = ACTION_TYPES.dist.create();
+    const used = state.actions.filter((x) => x.type === 'dist');
+    const span = [[0.5, 1], [0, 0.5], [0, 1]].find(([p, q]) => !used.some((x) => x.t1 < q - 1e-9 && x.t2 > p + 1e-9)) || [0.5, 1];
+    [a.t1, a.t2] = span;
+    state.actions.push(a);
+    state.sel = state.actions.length - 1;
+    return;
+  }
   if (t === null) {
     // 空いている位置（既存の荷重と重ならないところ）を探す
     const cands = type === 'point' || type === 'moment'
@@ -156,10 +175,21 @@ const ROW_FIELDS = {
     ${posField()}
     ${senseField('仮定の向き')}
     <span class="lf solved" data-f="val"></span>`,
+  dist: () => `
+    ${posField('t1', '始点')}
+    ${posField('t2', '終点')}
+    <label class="lf"><span>強さ</span>
+      <input data-f="w" type="number" min="0" max="${W_MAX}" step="0.5"><span class="u">kN/m</span></label>
+    <label class="lf"><span>形</span>
+      <select data-f="shape">${Object.entries(DIST_SHAPES).map(([k, s]) => `<option value="${k}">${s.label}</option>`).join('')}</select></label>
+    <label class="lf"><span>向き</span>
+      <select data-f="up"><option value="down">下向き</option><option value="up">上向き</option></select></label>`,
 };
-const posField = () => `<label class="lf"><span>位置</span>
-  <input data-f="pos" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="位置（例: 2L/3, 0.4L, 250）">
-  <span class="pos-mm"></span></label>`;
+const posField = (f = 'pos', label = '位置') => `<label class="lf"><span>${label}</span>
+  <input data-f="${f}" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="${label}（例: 2L/3, 0.4L, 250）">
+  <span class="pos-mm" data-mm="${f}"></span></label>`;
+/** 位置の入力欄が持つ値のキー（分布荷重は始点 t1・終点 t2） */
+const POS_KEY = { pos: 't', t1: 't1', t2: 't2' };
 const dirFields = (label) => `<label class="lf"><span>${label}</span>
   <select data-f="up"><option value="up">上向き</option><option value="down">下向き</option></select></label>
   <label class="lf"><span>傾き</span>
@@ -175,8 +205,16 @@ function syncList() {
     const row = list.children[k];
     const q = (f) => row.querySelector(`[data-f="${f}"]`);
     row.classList.toggle('selected', k === state.sel);
-    setIfIdle(q('pos'), posText(a.t, lsymNow()));
-    row.querySelector('.pos-mm').textContent = `= ${fmt(a.t * state.Lmm, 1)} mm`;
+    for (const [f, key] of Object.entries(POS_KEY)) {
+      if (!q(f)) continue;
+      setIfIdle(q(f), posText(a[key], lsymNow()));
+      row.querySelector(`.pos-mm[data-mm="${f}"]`).textContent = `= ${fmt(a[key] * state.Lmm, 1)} mm`;
+    }
+    if (a.type === 'dist') {
+      setIfIdle(q('w'), String(fmt(a.w, 2)));
+      setIfIdle(q('shape'), a.shape);
+      setIfIdle(q('up'), a.up ? 'up' : 'down');
+    }
     if (a.dir !== undefined) {
       const { up, tilt } = decompose(a.dir);
       setIfIdle(q('up'), up ? 'up' : 'down');
@@ -232,12 +270,24 @@ function buildList() {
     const commit = () => { stopAnim(); update(); };
     row.addEventListener('focusin', pick);
     on('sel', 'click', pick);
-    on('pos', 'change', (e) => {
-      const t = parsePos(e.target.value);
-      if (t !== null) state.actions[k].t = t;
-      e.target.value = posText(state.actions[k].t, lsymNow());
+    for (const [f, key] of Object.entries(POS_KEY)) {
+      on(f, 'change', (e) => {
+        const a2 = state.actions[k];
+        const t = parsePos(e.target.value);
+        if (t !== null) a2[key] = t;
+        // 分布荷重の始点・終点が逆転したら入れ替える
+        if (a2.type === 'dist' && a2.t1 > a2.t2) [a2.t1, a2.t2] = [a2.t2, a2.t1];
+        e.target.value = posText(a2[key], lsymNow());
+        commit();
+      });
+    }
+    on('w', 'input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (!isFinite(v)) return;
+      state.actions[k].w = Math.min(W_MAX, Math.max(0, v));
       commit();
     });
+    on('shape', 'change', (e) => { state.actions[k].shape = e.target.value; commit(); });
     on('P', 'input', (e) => {
       const v = parseFloat(e.target.value);
       if (!isFinite(v)) return;
@@ -246,6 +296,7 @@ function buildList() {
     });
     const setDir = () => {
       const up = q('up').value === 'up';
+      if (state.actions[k].type === 'dist') { state.actions[k].up = up; commit(); return; }
       let tilt = parseFloat(q('tilt').value);
       if (!isFinite(tilt)) tilt = 0;
       state.actions[k].dir = compose(up, Math.max(-90, Math.min(90, tilt)));
@@ -293,6 +344,11 @@ function captionOf(a, k) {
   const nm = namesOf(state.actions, k);
   const T = actionType(a);
   const lsym = lsymNow();
+  if (a.type === 'dist') {
+    const rel = (t) => tex(posTex(t - state.tO, lsym));
+    return `${T.label}（${DIST_SHAPES[a.shape].label}） <b>${tex(`${nm.sym} = ${fmt(a.w, 2)}\\,\\mathrm{kN/m}`)}</b>、`
+      + `O から ${rel(a.t1)} 〜 ${rel(a.t2)} の区間、${a.up ? '上向き' : '下向き'}`;
+  }
   const where = Math.abs(a.t - state.tO) < 1e-9 ? 'O の位置' : `O から ${tex(posTex(a.t - state.tO, lsym))}`;
   if (a.type === 'point' || a.type === 'reaction') {
     const { up, tilt } = decompose(a.dir);
@@ -317,13 +373,18 @@ function renderFormulas() {
     const a = state.actions[k];
     const color = COLORS[k % COLORS.length];
     const unknown = actionType(a).unknown;
-    let body;
+    let body = '';
+    if (t.pre) {
+      // 分布荷重はまず合力（等価な集中荷重）に置きかえる
+      body += `<p class="why">合力（分布の面積）に置きかえる：</p>${texD(t.pre.W)}`
+        + `<p class="why">合力は分布の図心、O から ${tex(t.pre.at)} の位置に作用する。</p>`;
+    }
     if (t.zeroReason) {
-      body = texD(`${t.lhs} = 0`) + `<p class="why">${t.zeroReason}ので、O まわりには回さない。</p>`;
+      body += texD(`${t.lhs} = 0`) + `<p class="why">${t.zeroReason}ので、O まわりには回さない。</p>`;
     } else {
       let l = `${t.lhs} = ${t.sym.replace(/^\+/, '')}`;
       if (t.simp) l += ` = ${t.simp.replace(/^\+/, '')}`;
-      body = texD(l);
+      body += texD(l);
       if (t.subst) {
         body += texD(`\\phantom{${t.lhs}} = ${t.subst.replace(/^\+/, '')} = ${signed(t.value)}\\ \\mathrm{kN\\cdot m}`);
       }
@@ -516,6 +577,7 @@ for (const p of PRESETS) {
 // 例: #m=pin&n=L&L=1000&o=0&a=p,0.5,6,-90;r,1,90;c,0.5,4;m,0,1&e=1&v=0
 //   a の各要素: 集中荷重 p,t,P,dir ／ 未知反力 r,t,dir ／ 集中モーメント c,t,C（反時計まわり正）
 //               ／ 反力モーメント m,t,sgn（仮定の向き ±1）
+//               ／ 分布荷重 d,t1,t2,w,形（u|r|l）,向き（1 = 上向き、-1 = 下向き）
 
 function buildHash() {
   const a = state.actions.map((x) => {
@@ -523,6 +585,7 @@ function buildHash() {
     if (x.type === 'point') return [key, fmt(x.t, 6), fmt(x.P, 3), fmt(x.dir, 3)].join(',');
     if (x.type === 'reaction') return [key, fmt(x.t, 6), fmt(x.dir, 3)].join(',');
     if (x.type === 'moment') return [key, fmt(x.t, 6), fmt(x.C, 3)].join(',');
+    if (x.type === 'dist') return [key, fmt(x.t1, 6), fmt(x.t2, 6), fmt(x.w, 3), x.shape, x.up ? 1 : -1].join(',');
     return [key, fmt(x.t, 6), x.sgn > 0 ? 1 : -1].join(',');
   }).join(';');
   return [
@@ -558,6 +621,14 @@ function applyHash(h) {
       const type = KEY_TYPE[f[0]];
       if (!type) return null;
       const t = exactFrac(clamp01(+f[1] || 0));
+      if (type === 'dist') {
+        const t2 = exactFrac(clamp01(+f[2] || 0));
+        return {
+          type, t1: Math.min(t, t2), t2: Math.max(t, t2),
+          w: Math.min(W_MAX, Math.max(0, +f[3] || 0)),
+          shape: DIST_SHAPES[f[4]] ? f[4] : 'u', up: +f[5] > 0,
+        };
+      }
       if (type === 'point') return { type, t, P: Math.min(P_MAX, Math.max(0, +f[2] || 0)), dir: snapDir(f[3]) };
       if (type === 'reaction') return { type, t, dir: snapDir(f[2]) };
       if (type === 'moment') return { type, t, C: Math.max(-C_MAX, Math.min(C_MAX, +f[2] || 0)) };

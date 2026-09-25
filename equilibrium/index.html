@@ -22,7 +22,7 @@
   <section class="card fig-card">
     <p class="kicker">Free body</p>
     <h2>棒と荷重</h2>
-    <p class="sub">矢印の<b>先端</b>を上下に引くと大きさと向き、<b>左右に大きく引くと斜め</b>になります（30°・45°・60°・90° に吸い付きます）。モーメントの<b>円弧の先端</b>は回すと大きさと向きが変わります。矢印の<b>軸</b>・円弧の<b>中心</b>を左右に引くと作用点、<b>O の丸</b>を引くと回転中心が動きます（長さの 1/2・1/3・1/4・1/5・1/10 の位置に吸い付きます）。破線は大きさが未知の反力です。棒をダブルクリックすると集中荷重が増えます。</p>
+    <p class="sub">矢印の<b>先端</b>を上下に引くと大きさと向き、<b>左右に大きく引くと斜め</b>になります（30°・45°・60°・90° に吸い付きます）。モーメントの<b>円弧の先端</b>は回すと大きさと向きが変わります。矢印の<b>軸</b>・円弧の<b>中心</b>を左右に引くと作用点、<b>O の丸</b>を引くと回転中心が動きます（長さの 1/2・1/3・1/4・1/5・1/10 の位置に吸い付きます）。分布荷重は頭の丸で強さ、両端の四角で区間を変えられます。破線は大きさが未知の反力です。棒をダブルクリックすると集中荷重が増えます。</p>
 
     <div class="toolbar">
       <label class="seg-label" for="mode">支え方</label>
@@ -61,12 +61,12 @@
       <button class="btn add-btn" data-type="reaction" type="button">＋ 未知反力</button>
       <button class="btn btn-accent add-btn" data-type="moment" type="button">＋ 集中モーメント</button>
       <button class="btn add-btn" data-type="rmoment" type="button">＋ 反力モーメント</button>
+      <button class="btn btn-accent add-btn" data-type="dist" type="button">＋ 分布荷重</button>
     </div>
     <div class="toolbar toolbar-tight len-row">
       <label class="lf len"><span>長さ <span class="tex" id="len-sym" data-tex="L"></span></span>
         <input id="Lmm" type="number" min="1" step="100"><span class="u">mm</span></label>
     </div>
-    <p class="sub later">分布荷重は今後追加予定です。</p>
   </section>
 
   <!-- ------------------------------------------------ 式 -->

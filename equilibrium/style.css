@@ -348,7 +348,6 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .formula.equil { border-color: #2f8f6f55; background: #f1f7f2; }
 .why.ng { color: var(--accent-strong); }
 .add-row { margin-top: 12px; }
-.later { margin: 10px 0 0; font-size: 0.74rem; }
 code {
   font-family: var(--mono-font);
   font-size: 0.78rem;

@@ -9,6 +9,9 @@
 //   未知反力     … 破線の矢印（長さ一定。向きは「仮定した向き」）
 //   集中モーメント … 作用点を中心にした実線の円弧（角度 ∝ 大きさ）
 //   反力モーメント … 破線の円弧（角度一定。仮定した回す向き）
+//   分布荷重     … 棒に向かう矢印の列と、その頭をつなぐ線（高さ ∝ 強さ）。下向きは棒の上に、
+//                    上向きは棒の下に描く（資料・beam/ と同じく荷重の側から棒を押す描き方）。
+//                    選んでいるときだけ、合力（等価な集中荷重）を図心に破線の矢印で示す
 //
 // 操作:
 //   O の丸         … 左右ドラッグで回転中心（モーメントの中心）を動かす
@@ -16,11 +19,13 @@
 //                    （未知反力は向きだけ変わる）
 //   円弧の先端     … 回すと大きさと向き（反力モーメントは向きだけ）
 //   矢印の軸・円弧の中心 … 左右ドラッグで作用点を動かす
+//   分布荷重       … 頭の線の丸（最大の側）を上下で強さと向き、両端の四角を左右で区間の端、
+//                    中の矢印の列を左右で区間ごと移動
 //   棒をダブルクリック … その位置に集中荷重を足す
 
 import {
   decompose, compose, snapPosition, snapTilt, posTex, angleTex, clamp01, actionType,
-  namesOf, fmt, lengthSym,
+  namesOf, fmt, lengthSym, distResultant, distResultantTex, SNAP_DENOMS,
 } from './model.js';
 
 export const W = 960;
@@ -38,9 +43,14 @@ const MOM_R = 24;         // 集中モーメントの円弧の半径
 const DEG_PER_KNM = 30;   // 集中モーメントの円弧の角度 [deg / kN·m]
 const RMOM_DEG = 230;     // 反力モーメントの円弧の角度（一定）
 const M_FULL = 12;        // この大きさ [kN·L] で O まわりの円弧が 270° になる
+export const W_MAX = 20;  // 分布荷重の強さの上限 [kN/m]
+const PX_PER_KNPM = 5;    // 分布荷重の高さ [px / (kN/m)]
+const DIST_MIN_H = 12;    // 分布荷重の高さの下限（強さ 0 でも掴めるように）
+const DIST_GAP = 4;       // 分布荷重の矢じりと棒の間
+const RESULT_MAX = 110;   // 合力の矢印の長さの上限 [px]
 const OBLIQUE_DX = 46;    // 先端をこれ以上横に引くと斜めモード
 const SNAP_PX = 10;
-const DIM_GAP = 26;       // 寸法線の段の間隔
+const DIM_GAP = 36;       // 寸法線の段の間隔（\dfrac のラベルが上下の段で重ならない間隔）
 
 export const COLORS = ['#245b8d', '#2f8f6f', '#8a4fa6', '#a8662a', '#1f7f95', '#b04a78', '#5f7424', '#8f3f3f'];
 const ACCENT = '#ef6a4b';
@@ -50,6 +60,20 @@ const MUTED = '#8a959b';
 const X = (t) => X0 + t * LPX;
 const isForce = (a) => a.type === 'point' || a.type === 'reaction';
 const isMoment = (a) => a.type === 'moment' || a.type === 'rmoment';
+const isDist = (a) => a.type === 'dist';
+
+/** 分布荷重の頭の線の高さ [px]（棒の面から。位置 t での値） */
+function distHeight(a, t) {
+  const h = Math.max(DIST_MIN_H, a.w * PX_PER_KNPM);
+  const b = a.t2 - a.t1;
+  if (a.shape === 'u' || b < 1e-9) return h;
+  const s = (t - a.t1) / b;                  // 0..1
+  const f = a.shape === 'r' ? s : 1 - s;
+  return Math.max(0, f) * h;
+}
+
+/** 分布荷重を描く側（下向きの荷重は棒の上、上向きは棒の下）。画面座標の y の向き */
+const distSide = (a) => (a.up ? 1 : -1);
 
 /** 力の矢印の長さ [px] */
 function forceLen(a) {
@@ -199,8 +223,10 @@ export class MomentFigure {
       const active = sel === k;
       const u = res.unknowns.find((x) => x.k === k);
       const val = u ? u.value : null;
-      if (isForce(a)) this._drawForce(s, labels, { a, k, color, nm, active, val, tf, anim, hs, state });
-      else if (isMoment(a)) this._drawMoment(s, labels, { a, k, color, nm, active, val, tf, anim, hs, state });
+      const o = { a, k, color, nm, active, val, tf, anim, hs, state };
+      if (isForce(a)) this._drawForce(s, labels, o);
+      else if (isMoment(a)) this._drawMoment(s, labels, o);
+      else if (isDist(a)) this._drawDist(s, labels, o);
     });
 
     this.svg.innerHTML = s.join('');
@@ -289,6 +315,69 @@ export class MomentFigure {
     labels.push({ key: `P${k}`, tex: nm.sym + valTex, x: lp.x, y: lp.y, color });
   }
 
+  _drawDist(s, labels, { a, k, color, nm, active, tf, anim, hs, state }) {
+    const side = distSide(a);                       // 荷重を描く側（画面の y の向き）
+    const y0 = RY + side * (ROD_H / 2 + DIST_GAP);  // 矢じりの先（棒の面の少し外）
+    const pt = (t, h) => tf(X(t), y0 + side * h);
+    const w = active ? 2.4 : 1.8;
+    const b = a.t2 - a.t1;
+    const hMax = Math.max(DIST_MIN_H, a.w * PX_PER_KNPM);
+
+    // 頭の線（等分布は水平、三角形は斜め）と、両端の縦線で囲む
+    const hA = distHeight(a, a.t1), hB = distHeight(a, a.t2);
+    const P = [pt(a.t1, 0), pt(a.t1, hA), pt(a.t2, hB), pt(a.t2, 0)];
+    s.push(`<path d="M${P[0].x} ${P[0].y} L${P[1].x} ${P[1].y} L${P[2].x} ${P[2].y} L${P[3].x} ${P[3].y}" fill="${color}" fill-opacity="${active ? 0.1 : 0.06}" stroke="none"/>`);
+    s.push(`<path d="M${P[1].x} ${P[1].y} L${P[2].x} ${P[2].y}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>`);
+
+    // 棒に向かう矢印の列（間隔はおよそ 26px。両端は必ず描く）
+    const n = Math.max(1, Math.round((b * LPX) / 26));
+    for (let i = 0; i <= n; i++) {
+      const t = a.t1 + (b * i) / n;
+      const h = distHeight(a, t);
+      if (h < 7) continue; // 三角形の尖った側は矢じりが収まらないので省く
+      const p1 = pt(t, h), p2 = pt(t, 0);
+      s.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${color}" stroke-width="${w * 0.75}" marker-end="url(#mf-head)"/>`);
+    }
+
+    if (!anim) {
+      // 区間ごと動かす掴み代（矢印の列の範囲）
+      const top = Math.min(y0, y0 + side * hMax), hgt = Math.abs(hMax);
+      s.push(`<rect class="grab" data-k="${k}" data-part="shaft" x="${X(a.t1)}" y="${top}" width="${Math.max(b * LPX, 6)}" height="${hgt}" fill="transparent"/>`);
+      // 区間の端（両端の四角）
+      for (const [which, t] of [[1, a.t1], [2, a.t2]]) {
+        const hh = Math.max(distHeight(a, t), DIST_MIN_H) / 2;
+        const p = { x: X(t), y: y0 + side * hh };
+        const r = active ? 5.5 : 4.5;
+        s.push(`<rect class="grab end" data-k="${k}" data-part="end" data-which="${which}" x="${p.x - (r + 7) * hs}" y="${p.y - (r + 7) * hs}" width="${2 * (r + 7) * hs}" height="${2 * (r + 7) * hs}" fill="transparent"/>`);
+        s.push(`<rect x="${p.x - r}" y="${p.y - r}" width="${2 * r}" height="${2 * r}" rx="1.5" fill="#fffdf7" stroke="${color}" stroke-width="1.4" pointer-events="none"/>`);
+      }
+      // 強さと向き（頭の線の最大の側の丸）
+      const tTip = a.shape === 'r' ? a.t2 : a.shape === 'l' ? a.t1 : (a.t1 + a.t2) / 2;
+      this._tipHandle(s, k, { x: X(tTip), y: y0 + side * hMax }, color, active, hs);
+    }
+
+    // 合力（等価な集中荷重）。選んでいるときだけ、図心から荷重の向きへ破線の矢印で示す
+    const { F, tc } = distResultant(a, state.Lm);
+    if (active && !anim && b > 1e-9) {
+      const len = Math.min(RESULT_MAX, Math.max(28, F * PX_PER_KN));
+      const yb = RY - side * (ROD_H / 2);           // 反対側の棒の面から
+      const p1 = { x: X(tc), y: yb }, p2 = { x: X(tc), y: yb - side * len };
+      s.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${color}" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mf-head)" opacity="0.85"/>`);
+      s.push(`<circle cx="${p1.x}" cy="${p1.y}" r="3" fill="${color}" pointer-events="none"/>`);
+      const Wtex = distResultantTex(a, nm.sym, lengthSym(state));
+      labels.push({
+        key: `W${k}`, tex: `${Wtex}${state.showValues ? `=${fmt(F, 2)}\\,\\mathrm{kN}` : ''}`,
+        x: p2.x + 30, y: p2.y - side * 10, color, small: true,
+      });
+    }
+
+    // 記号は強さの丸より外側（棒から遠い側）。丸に重ねると持ち手が隠れ、横に置くと端の四角に重なる
+    const tLab = a.shape === 'r' ? a.t2 : a.shape === 'l' ? a.t1 : (a.t1 + a.t2) / 2;
+    const lp = tf(X(tLab), y0 + side * (hMax + 26));
+    const valTex = state.showValues ? `=${fmt(a.w, 2)}\\,\\mathrm{kN/m}` : '';
+    labels.push({ key: `P${k}`, tex: nm.sym + valTex, x: lp.x, y: lp.y, color });
+  }
+
   _tipHandle(s, k, p, color, active, hs) {
     const hr = active ? 8 : 6.5;
     s.push(`<circle class="grab tip" data-k="${k}" data-part="tip" cx="${p.x}" cy="${p.y}" r="${(hr + 7) * hs}" fill="transparent"/>`);
@@ -312,6 +401,15 @@ export class MomentFigure {
       } else if (isMoment(a)) {
         add(X(a.t) + MOM_R + 40, RY - MOM_R - 12);
         add(X(a.t) - MOM_R, RY + MOM_R);
+      } else if (isDist(a)) {
+        const side = distSide(a);
+        const h = ROD_H / 2 + DIST_GAP + Math.max(DIST_MIN_H, a.w * PX_PER_KNPM) + 44; // 記号のぶん
+        add(X(a.t1) - 20, RY + side * h);
+        add(X(a.t2) + 20, RY + side * h);
+        if (k === state.sel) {
+          const len = Math.min(RESULT_MAX, Math.max(28, distResultant(a, state.Lm).F * PX_PER_KN));
+          add(X(distResultant(a, state.Lm).tc), RY - side * (ROD_H / 2 + len));
+        }
       }
     });
     const nArc = (state.showEach ? res.terms.length : 0) + 1;
@@ -351,6 +449,7 @@ export class MomentFigure {
 
   /**
    * 寸法線の一覧（上の段から）。O から各力の作用点までの距離と、全長。
+   * 分布荷重は区間の長さと、O から合力の作用点（図心）までの距離。
    * 長さの記号は L（棒全体）か x（切り取った自由体の長さ）。
    * モーメント（集中・反力）は O の位置によらないので寸法線を引かない。
    */
@@ -360,13 +459,22 @@ export class MomentFigure {
     const rows = [];
     const isTotal = (ta, tb) => Math.abs(Math.min(ta, tb)) < 1e-9 && Math.abs(Math.max(ta, tb) - 1) < 1e-9;
     const seen = new Set();
-    actions.forEach((a, k) => {
-      if (!isForce(a)) return;
-      const d = a.t - tO;
-      const id = a.t.toFixed(6);
-      if (Math.abs(d) < 1e-9 || isTotal(tO, a.t) || seen.has(id)) return;
+    const fromO = (t, key, color) => {
+      const d = t - tO;
+      const id = t.toFixed(6);
+      if (Math.abs(d) < 1e-9 || isTotal(tO, t) || seen.has(id)) return;
       seen.add(id); // 同じ位置の力は寸法線を 1 本にまとめる
-      rows.push({ ta: tO, tb: a.t, tex: posTex(d, lsym), key: `dl${k}`, color: COLORS[k % COLORS.length] });
+      rows.push({ ta: tO, tb: t, tex: posTex(d, lsym), key, color });
+    };
+    actions.forEach((a, k) => {
+      const color = COLORS[k % COLORS.length];
+      if (isForce(a)) fromO(a.t, `dl${k}`, color);
+      if (isDist(a) && a.t2 - a.t1 > 1e-9) {
+        if (!isTotal(a.t1, a.t2)) {
+          rows.push({ ta: a.t1, tb: a.t2, tex: posTex(a.t2 - a.t1, lsym), key: `db${k}`, color });
+        }
+        fromO(distResultant(a, state.Lm).tc, `dl${k}`, color);
+      }
     });
     rows.push({ ta: 0, tb: 1, tex: lsym, key: 'dL', color: INK });
     return rows;
@@ -497,6 +605,7 @@ export class MomentFigure {
     const st = this.state;
     // 先端 > O > 軸 の順に優先する（先端と O が重なったときは先端を掴む）
     if (el && el.dataset.part === 'tip') return { kind: 'tip', k: +el.dataset.k };
+    if (el && el.dataset.part === 'end') return { kind: 'end', k: +el.dataset.k, which: +el.dataset.which };
     if (Math.hypot(p.x - X(st.tO), p.y - RY) <= (BULGE_R + 9) * (this.hitScale || 1)) return { kind: 'O' };
     if (el && el.dataset.part === 'shaft') return { kind: 'shaft', k: +el.dataset.k };
     return null;
@@ -514,6 +623,7 @@ export class MomentFigure {
       const a = this.state.actions[h.k];
       if (isForce(a)) this.drag.oblique = Math.abs(decompose(a.dir).tilt) > 0.5;
       if (isMoment(a)) this.drag.sweep = momentSweep(a);
+      if (isDist(a)) this.drag.span = { t1: a.t1, t2: a.t2 };
       this.onSelect(h.k);
     }
     this.onDragState(true);
@@ -525,7 +635,9 @@ export class MomentFigure {
     if (!this.drag) {
       const h = this.state && !this.state.animating ? this._hit(p, e) : null;
       const hv = h ? h.kind : null;
-      this.svg.style.cursor = !h ? 'default' : h.kind === 'tip' ? 'grab' : 'ew-resize';
+      const dist = h && h.k !== undefined && isDist(this.state.actions[h.k]);
+      this.svg.style.cursor = !h ? 'default'
+        : h.kind === 'tip' ? (dist ? 'ns-resize' : 'grab') : dist && h.kind === 'shaft' ? 'move' : 'ew-resize';
       if (hv !== this.hover) {
         this.hover = hv;
         this.onChange(null); // 丸の膨らみだけ描き直す
@@ -552,6 +664,11 @@ export class MomentFigure {
       return;
     }
     const a = { ...st.actions[d.k] };
+    if (isDist(a)) {
+      this._applyDist(a, d, p, tol);
+      this.onChange({ action: { k: d.k, value: a } });
+      return;
+    }
     if (d.kind === 'shaft') {
       a.t = snapPosition(clamp01((p.x - X0) / LPX), tol);
     } else if (isMoment(a)) {
@@ -585,6 +702,35 @@ export class MomentFigure {
       }
     }
     this.onChange({ action: { k: d.k, value: a } });
+  }
+
+  /** 分布荷重のドラッグ。a は書き換えてよい複製 */
+  _applyDist(a, d, p, tol) {
+    if (d.kind === 'tip') {
+      // 棒の面からの距離が強さ。棒の反対側まで引くと向きが変わる（下向きの荷重は棒の上に描く）
+      const dy = RY - p.y; // 上が正
+      const off = ROD_H / 2 + DIST_GAP;
+      if (Math.abs(dy) > off) a.up = dy < 0;
+      a.w = Math.min(W_MAX, Math.round(Math.max(0, Math.abs(dy) - off) / PX_PER_KNPM));
+    } else if (d.kind === 'end') {
+      const t = snapPosition(clamp01((p.x - X0) / LPX), tol);
+      // 端を反対側の端より向こうへ引いたら、持ち手を入れ替える
+      if (d.which === 1) {
+        if (t <= a.t2) a.t1 = t; else { a.t1 = a.t2; a.t2 = t; d.which = 2; }
+      } else if (t >= a.t1) a.t2 = t; else { a.t2 = a.t1; a.t1 = t; d.which = 1; }
+    } else {
+      // 区間ごと動かす。長さを保ったまま、始点か終点の吸い付くほうに合わせる
+      const b = d.span.t2 - d.span.t1;
+      const dt = (p.x - d.start.x) / LPX;
+      const raw1 = Math.min(Math.max(0, d.span.t1 + dt), 1 - b);
+      const s1 = snapPosition(raw1, tol);
+      const s2 = snapPosition(raw1 + b, tol);
+      const snapped = (s) => SNAP_DENOMS.some((q) => Math.abs(s * q - Math.round(s * q)) < 1e-9);
+      let t1 = snapped(s1) ? s1 : snapped(s2) ? s2 - b : s1;
+      t1 = Math.max(0, Math.min(t1, 1 - b));
+      a.t1 = t1;
+      a.t2 = t1 + b;
+    }
   }
 
   _dbl(e) {
