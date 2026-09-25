@@ -4,6 +4,7 @@ import {
   fmt, posTex, signed, DIST_SHAPES,
 } from './model.js';
 import { toRational } from '../equilibrium/model.js';
+import { symbolicReactions, sectionPolys, intervalOf, polyTex, valueTexAt } from './symbolic.js';
 import { BeamFigure, DiagramPlot, COLORS, P_MAX, C_MAX, W_MAX, V_COLOR, M_COLOR } from './figure.js';
 
 const $ = (id) => document.getElementById(id);
@@ -83,6 +84,7 @@ let ctx = null;         // { sol, items, dia, sec, names }
 let hashTimer = 0;
 let lastHash = '';
 let anim = null;
+let plotPxCache = 0; // PC でのグラフの高さ [px]（fitPlots() が決める。0 なら既定）
 
 applyHash(location.hash.replace(/^#/, ''));
 
@@ -117,10 +119,55 @@ function update() {
   const sol = solveReactions(ms);
   const items = forceItems(ms, sol);
   const dia = diagram(ms, items);
-  ctx = { sol, items, dia, names: loadNames(state.loads) };
+  // 反力を荷重の記号で解いた式（静定で未知量が 2 つのとき。解けなければ反力は記号のまま）
+  const subs = symbolicReactions(ms, sol);
+  // グラフの最大・最小の式（断面の位置によらないので、ここで 1 回だけ作る）
+  const extTex = {};
+  if (sol.status === 'solved') {
+    for (const [ek, e] of Object.entries(dia.extremes)) {
+      if (e) extTex[ek] = valueTexAt(ms, sol, subs, ek[0], e.x, e.v);
+    }
+  }
+  ctx = { sol, items, dia, subs, extTex, names: loadNames(state.loads) };
   syncLists();
   draw();
+  fitPlots();
   syncHash();
+}
+
+/**
+ * グラフの高さを測り直して、変わっていれば描き直す。グラフの高さを変えると状態表示の折り返しなども
+ * 変わるので 2 回まで繰り返す。アニメーション中は毎フレーム測らない（状態表示の長さが毎フレーム変わり、
+ * グラフの高さがちらつくため）。設定を変えたとき・画面の大きさが変わったときだけ呼ぶ。
+ */
+function fitPlots() {
+  for (let i = 0; i < 2; i++) {
+    const px = plotPx();
+    if (Math.abs(px - plotPxCache) <= 2) return;
+    plotPxCache = px;
+    draw();
+  }
+}
+
+/** いまの区間の V・M の式（反力は解いた式に置きかえ、x について整理したもの） */
+function currentPolys() {
+  const ms = modelState();
+  return sectionPolys(ms, ctx.sol, intervalOf(ms, state.xs), ctx.subs);
+}
+
+/**
+ * PC では「断面の位置」のツールバーから状態表示（V・M の式）までが 1 画面に収まるよう、
+ * グラフの高さを画面の高さから決める（その範囲から梁の図とグラフを引いた残りを「その他」とみなす。
+ * 図の下の操作説明は含めない）。スマホでは使わない。
+ */
+function plotPx() {
+  if (window.innerWidth <= 760) return 0;
+  const top = document.querySelector('.fig-card .toolbar').getBoundingClientRect().top;
+  const bottom = document.querySelector('.fig-foot').getBoundingClientRect().bottom;
+  const used = $('beam').offsetHeight + $('sfd').offsetHeight + $('bmd').offsetHeight;
+  const other = bottom - top - used;
+  const px = (window.innerHeight - 16 - other - $('beam').offsetHeight) / 2;
+  return Math.max(100, Math.min(280, px));
 }
 
 /** 断面の位置だけが変わったとき（アニメーション中も毎フレームこれ） */
@@ -130,10 +177,11 @@ function draw() {
   ctx.sec = ok ? sectionAt(ctx.items, state.xs, Lm()) : null;
   const view = { ...state, showCut: ok };
   beam.render(view, ctx);
-  const opt = { ghost: state.showGhost, showCut: ok };
+  const opt = { ghost: state.showGhost, showCut: ok, showValues: state.showValues, plotPx: plotPxCache };
   if (ok) {
-    sfd.render(ctx.dia, state.xs, ctx.sec, opt);
-    bmd.render(ctx.dia, state.xs, ctx.sec, opt);
+    const cp = currentPolys();
+    sfd.render(ctx.dia, state.xs, ctx.sec, { ...opt, curTex: polyTex(cp.V), extTex: ctx.extTex });
+    bmd.render(ctx.dia, state.xs, ctx.sec, { ...opt, curTex: polyTex(cp.M), extTex: ctx.extTex });
   } else {
     const empty = { pts: [{ x: 0, V: 0, M: 0 }, { x: 1, V: 0, M: 0 }], extremes: {}, bps: [0, 1] };
     sfd.render(empty, 0, null, opt);
@@ -384,9 +432,13 @@ function statusMessage() {
 function renderStatus() {
   const st = $('status');
   if (ctx.sol.status !== 'solved') { st.innerHTML = `<span class="sense">${statusMessage()}</span>`; return; }
+  // 式が基本。数値は「図に数値も出す」のときだけ単位つきで添える
   const { V, M } = ctx.sec;
-  st.innerHTML = `<span class="val-v">${tex(`V = ${signed(V)}\\ \\mathrm{kN}`)}</span>`
-    + `<span class="val-m">${tex(`M = ${signed(M)}\\ \\mathrm{kN\\cdot m}`)}</span>`
+  const cp = currentPolys();
+  const v = state.showValues ? ` = ${signed(V)}\\ \\mathrm{kN}` : '';
+  const m = state.showValues ? ` = ${signed(M)}\\ \\mathrm{kN\\cdot m}` : '';
+  st.innerHTML = `<span class="val-v">${tex(`V = ${polyTex(cp.V)}${v}`)}</span>`
+    + `<span class="val-m">${tex(`M = ${polyTex(cp.M)}${m}`)}</span>`
     + `<span class="fsum">${tex(`x = ${posShort(state.xs)}`)}</span>`;
 }
 
@@ -400,12 +452,16 @@ function renderFormulas() {
   rBox.hidden = false; mBox.hidden = false;
   const f = sectionFormulas(modelState(), ctx.items, state.xs);
   const { V, M } = ctx.sec;
+  const cp = currentPolys();
+  // 反力を代入して x について整理した式（反力が記号で解けたときだけ。式が同じなら省く）
+  const subV = ctx.subs && polyTex(cp.V) !== f.V ? texD(`\\phantom{V} = ${polyTex(cp.V)}`) : '';
+  const subM = ctx.subs && polyTex(cp.M) !== f.M ? texD(`\\phantom{M} = ${polyTex(cp.M)}`) : '';
   secBox.innerHTML = `<div class="cap">仮想断面を ${tex(intervalTex(f.interval))} にとったとき（いま ${tex(`x = ${posShort(state.xs)}`)}）</div>`
     + '<p class="why">力のつり合い（上向き正）から：</p>'
-    + texD(`V = ${f.V}`)
+    + texD(`V = ${f.V}`) + subV
     + texD(`\\phantom{V} = ${signed(V)}\\ \\mathrm{kN}`)
     + '<p class="why">断面まわりのモーメントのつり合いから：</p>'
-    + texD(`M = ${f.M}`)
+    + texD(`M = ${f.M}`) + subM
     + texD(`\\phantom{M} = ${signed(M)}\\ \\mathrm{kN\\cdot m}`)
     + '<p class="why">区間の境目（荷重・支点・分布荷重の端）を越えると式の形が変わります。通り過ぎた分布荷重は合力に置きかえています。</p>';
 
@@ -413,16 +469,25 @@ function renderFormulas() {
   rBox.innerHTML = `<div class="cap">反力（梁全体のつり合い。上向き・反時計まわりを仮定。${tex('M_{O}')} は左端 O まわりのモーメント）</div>`
     + lines.equil.map(texD).join('')
     + '<p class="why">これを解くと：</p>'
-    + lines.solution.map(texD).join('')
+    + (ctx.subs
+      ? ctx.sol.reactions.map((r) => texD(`${r.sym} = ${polyTex(ctx.subs.get(r.sym))} = ${signed(r.value)}\\ \\mathrm{${r.kind === 'R' ? 'kN' : 'kN\\cdot m'}}`)).join('')
+      : lines.solution.map(texD).join(''))
     + (ctx.sol.reactions.some((r) => r.value < -1e-9) ? '<p class="why">負の値は、仮定と逆向きということ。</p>' : '');
 
   const e = ctx.dia.extremes;
   const at = (x) => posShort(x);
   const absMax = (a, b) => (!a ? b : !b ? a : Math.abs(a.v) >= Math.abs(b.v) ? a : b);
   const vm = absMax(e.Vmax, e.Vmin), mm = absMax(e.Mmax, e.Mmin);
+  // 式で書けるときは |…| の中に式（負なら符号を外す）、書けないときは値だけ
+  const symOf = (ek, x) => {
+    const t = ctx.extTex[ek];
+    if (!t) return '';
+    return x.v < 0 ? `\\left|${t}\\right| = ` : `${t} = `;
+  };
+  const vk = vm === e.Vmax ? 'Vmax' : 'Vmin', mk = mm === e.Mmax ? 'Mmax' : 'Mmin';
   mBox.innerHTML = '<div class="cap">最大値（絶対値）</div>'
-    + (vm ? texD(`|V|_{\\max} = ${fmt(Math.abs(vm.v))}\\ \\mathrm{kN}\\quad (x = ${at(vm.x)})`) : '')
-    + (mm ? texD(`|M|_{\\max} = ${fmt(Math.abs(mm.v))}\\ \\mathrm{kN\\cdot m}\\quad (x = ${at(mm.x)})`) : '');
+    + (vm ? texD(`|V|_{\\max} = ${symOf(vk, vm)}${fmt(Math.abs(vm.v))}\\ \\mathrm{kN}\\quad (x = ${at(vm.x)})`) : '')
+    + (mm ? texD(`|M|_{\\max} = ${symOf(mk, mm)}${fmt(Math.abs(mm.v))}\\ \\mathrm{kN\\cdot m}\\quad (x = ${at(mm.x)})`) : '');
 }
 
 // ---------------------------------------------------------------- アニメーション
@@ -464,6 +529,24 @@ playBtn.addEventListener('click', () => (anim ? stopAnim() : startAnim()));
 // ---------------------------------------------------------------- 操作パネル
 
 $('xs').addEventListener('input', (e) => { stopAnim(); setCut(parseFloat(e.target.value)); });
+
+// 選んでいる支点・荷重を Delete / Backspace で消す（入力欄に文字を打っているときは除く）
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (e.target.closest && e.target.closest('input, select, textarea, [contenteditable]')) return;
+  const { kind, k } = state.sel || {};
+  const list = kind === 'support' ? state.supports : kind === 'load' ? state.loads : null;
+  if (!list || k < 0 || k >= list.length) return;
+  e.preventDefault();
+  stopAnim();
+  list.splice(k, 1);
+  state.sel = { kind, k: Math.min(k, list.length - 1) };
+  $('support-list').dataset.sig = '';
+  update();
+});
+
+// PC ではグラフの高さを画面の高さから決めているので、画面の大きさが変わったら描き直す
+window.addEventListener('resize', () => { draw(); fitPlots(); });
 for (const b of document.querySelectorAll('.add-load')) b.addEventListener('click', () => { stopAnim(); addLoad(b.dataset.type); update(); });
 for (const b of document.querySelectorAll('.add-sup')) b.addEventListener('click', () => { stopAnim(); addSupport(b.dataset.type); update(); });
 $('Lmm').addEventListener('change', (e) => {
@@ -648,6 +731,11 @@ $('share-copy').addEventListener('click', async () => {
 function boot() {
   renderTex();
   update();
+  // 1 回目はカードの高さが決まる前に描いているので、配置が決まってからグラフの高さを決め直す
+  requestAnimationFrame(() => fitPlots());
+  // KaTeX のフォントが読み込まれると式の幅・折り返しが変わるので、そのあとでもう一度
+  // （グラフのラベルの重なりも実測で判定しているので、高さが変わらなくても 1 回描き直す）
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { draw(); fitPlots(); });
 }
 
 window.__sfd = { state, update, get ctx() { return ctx; }, beam, sfd, bmd };

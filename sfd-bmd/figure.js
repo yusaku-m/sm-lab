@@ -117,6 +117,8 @@ class LabelLayer {
       el.style.color = L.color || INK;
       el.classList.toggle('small', !!L.small);
       el.style.opacity = L.faded ? '0.3' : '';
+      // 既定は中央寄せ（CSS の translate(-50%, -50%)）。l / r は点の右／左に置く
+      el.style.transform = L.anchor === 'l' ? 'translate(0, -50%)' : L.anchor === 'r' ? 'translate(-100%, -50%)' : '';
     }
     for (const [k, el] of this.map) if (!seen.has(k)) { el.remove(); this.map.delete(k); }
   }
@@ -522,14 +524,25 @@ export class DiagramPlot {
     new ResizeObserver(() => this.labels.fit(this.host, this.LO)).observe(host);
   }
 
-  /** data = model.diagram() の結果。xs = 断面の位置、ghost = まだ通っていない部分も薄く描くか */
-  render(data, xs, cur, { ghost = true, showCut = true } = {}) {
+  /**
+   * data = model.diagram() の結果。xs = 断面の位置、cur = 断面の { V, M }。
+   * opt: ghost（まだ通っていない部分も薄く描く）、showCut、showValues（数値を単位つきで添える）、
+   *      curTex（断面の値の式）、extTex（{ Vmax: 式 | null, … }。null なら記号だけ）、
+   *      plotPx（PC で 1 画面に収めるためのグラフの高さ [px]。app.js が画面の高さから決める）
+   */
+  render(data, xs, cur, opt = {}) {
+    const { ghost = true, showCut = true, showValues = false, curTex = null, extTex = {}, plotPx = 0 } = opt;
     const { pts, extremes, bps } = data;
     const key = this.key;
-    // 狭い画面（スマホ）では SVG 全体が縮むので、文字を大きく・グラフを縦長にする
+    // 狭い画面（スマホ）では SVG 全体が縮むので、文字を大きく・グラフを縦長にする。
+    // PC では plotPx に合わせて縦の範囲を決める（viewBox の縦 = plotPx × W / 表示幅）
     const cw = this.host.clientWidth || W;
     const fz = Math.max(1, (11 / 13) * (W / cw));
-    this.H = cw < 600 ? 150 : 110;
+    this.H = cw < 600 ? 150
+      : plotPx ? Math.max(55, Math.min(120, (plotPx * W) / cw / 2 - 20)) : 110;
+    const em = (Math.max(10, (19 * cw) / W) * W) / cw; // ラベル 1 文字ぶんの高さ（viewBox 単位）
+    const unitTex = key === 'V' ? '\\,\\mathrm{kN}' : '\\,\\mathrm{kN\\cdot m}';
+    const withVal = (tex, v) => (showValues ? `${tex} = ${fmt(v, 2)}${unitTex}` : tex);
     this.LO = { left: 0, right: W, top: -this.H - 20, bottom: this.H + 20 };
     const LO = this.LO;
     const F = (n) => n * fz;
@@ -550,7 +563,7 @@ export class DiagramPlot {
       if (t <= 1e-9 || t >= 1 - 1e-9) continue;
       s.push(`<line x1="${X(t)}" y1="${-this.H + 10}" x2="${X(t)}" y2="${this.H - 10}" stroke="${MUTED}" stroke-width="0.6" stroke-dasharray="3 4"/>`);
     }
-    labels.push({ key: 'ttl', tex: `${key}\\ [\\mathrm{${this.unit}}]`, x: X0 - 54, y: -this.H + 12, small: true, color: this.color });
+    // 軸の名前（V [kN] など）はグラフの見出し（HTML）に出している。ここに置くと最大値のラベルとぶつかる
     s.push(`<text x="${X0 - 12}" y="${-this.H + 30}" text-anchor="end" font-size="${F(13)}" fill="${MUTED}">＋</text>`);
     s.push(`<text x="${X0 - 12}" y="${this.H - 18}" text-anchor="end" font-size="${F(13)}" fill="${MUTED}">－</text>`);
 
@@ -581,7 +594,8 @@ export class DiagramPlot {
     const shown = new Set();
     for (const ek of extKeys) {
       const e = extremes[ek];
-      if (!e || Math.abs(e.v) < 1e-9 || e.x > limit + 1e-9) continue;
+      // ほぼ 0 のもの（端の M = 0 など）は出さない。標本の数値誤差があるので最大の絶対値との比で見る
+      if (!e || Math.abs(e.v) < 1e-6 * vmax || e.x > limit + 1e-9) continue;
       const id = `${e.x.toFixed(4)}:${e.v.toFixed(4)}`;
       if (shown.has(id)) continue;
       // 断面の値のラベルと重なるときは出さない（断面の点がその値を示している）
@@ -589,7 +603,15 @@ export class DiagramPlot {
       shown.add(id);
       const up = e.v > 0;
       s.push(`<circle cx="${X(e.x)}" cy="${Y(e.v)}" r="3.5" fill="${this.color}"/>`);
-      s.push(`<text x="${X(e.x)}" y="${Y(e.v) + (up ? -F(9) : F(19))}" text-anchor="middle" font-size="${F(13)}" font-weight="600" fill="${this.color}" paint-order="stroke" stroke="${PAPER}" stroke-width="${F(4)}">${ek.endsWith('max') ? '最大' : '最小'} ${fmt(e.v, 2)}</text>`);
+      // 式で書けるときは式（M_max = wL²/8 の形）、書けないときは記号だけ。数値はトグルのときだけ
+      const name = `${key}_{\\${ek.endsWith('max') ? 'max' : 'min'}}`;
+      const tex = extTex[ek] ? `${name} = ${extTex[ek]}` : name;
+      labels.push({
+        key: `ext${ek}`, tex: withVal(tex, e.v), color: this.color, small: true,
+        x: X(e.x), y: Y(e.v) + (up ? -0.85 : 0.85) * em, alt: Y(e.v) + (up ? 0.85 : -0.85) * em,
+        // 端に近いときは内側へ寄せる（中央寄せだと半分が枠の外に出る）
+        anchor: X(e.x) < X0 + 80 ? 'l' : X(e.x) > X0 + LPX - 80 ? 'r' : undefined,
+      });
     }
 
     // 断面の位置
@@ -598,12 +620,46 @@ export class DiagramPlot {
       s.push(`<line x1="${xc}" y1="${-this.H + 2}" x2="${xc}" y2="${this.H - 2}" stroke="${INK}" stroke-width="1.2" stroke-dasharray="7 5"/>`);
       const y = Y(cur[key]);
       s.push(`<circle cx="${xc}" cy="${y}" r="5.5" fill="${PAPER}" stroke="${this.color}" stroke-width="2.4"/>`);
-      const right = xs < (fz > 1.5 ? 0.6 : 0.78); // 右に寄ったら値を断面の左に出す
-      s.push(`<text x="${xc + (right ? F(12) : -F(12))}" y="${y + (cur[key] >= 0 ? -F(10) : F(20))}" text-anchor="${right ? 'start' : 'end'}" font-size="${F(15)}" font-weight="700" fill="${this.color}" paint-order="stroke" stroke="${PAPER}" stroke-width="${F(4)}">${key} = ${fmt(cur[key], 2)}</text>`);
+      const right = xs < 0.5; // 右半分では断面の左に出す（式が長くなっても枠から出にくいように）
+      const tex = curTex ? `${key} = ${curTex}` : key;
+      // 式は長くなるので点のそばではなく、グラフの空いている側の端に置く
+      // （値が正なら下の端、負なら上の端。曲線は値と同じ側に寄っていることが多い）
+      labels.push({
+        key: 'cur', tex: withVal(tex, cur[key]), color: this.color, anchor: right ? 'l' : 'r',
+        x: xc + (right ? F(10) : -F(10)), y: (cur[key] >= 0 ? 1 : -1) * (this.H - 0.9 * em),
+      });
     }
     s.push(`<rect x="${X0 - 6}" y="${-this.H}" width="${LPX + 12}" height="${2 * this.H}" fill="transparent" style="cursor: ew-resize"/>`);
     this.svg.innerHTML = s.join('');
     this.labels.set(labels, LO);
+    this._declutter(labels, LO);
+  }
+
+  /**
+   * 最大・最小のラベルが断面の値のラベルや互いに重なるときは、点の反対側へずらし、
+   * それでも重なれば隠す（断面の値が優先）。位置は DOM に入れてから実測する。
+   */
+  _declutter(labels, LO) {
+    const map = this.labels.map;
+    const m = 8; // くっついて 1 つの式に見えないよう、少し離れていることも求める
+    const hit = (a, b) => a.left < b.right + m && b.left < a.right + m && a.top < b.bottom && b.top < a.bottom;
+    const placed = [];
+    const cur = map.get('cur');
+    if (cur) placed.push(cur.getBoundingClientRect());
+    const host = this.host.getBoundingClientRect();
+    const inside = (r) => r.top >= host.top - 2 && r.bottom <= host.bottom + 2;
+    for (const L of labels) {
+      if (!L.key.startsWith('ext')) continue;
+      const el = map.get(L.key);
+      el.style.visibility = '';
+      let r = el.getBoundingClientRect();
+      if (placed.some((p) => hit(p, r)) || !inside(r)) {
+        el.style.top = `${((L.alt - LO.top) / (LO.bottom - LO.top)) * 100}%`;
+        r = el.getBoundingClientRect();
+        if (placed.some((p) => hit(p, r)) || !inside(r)) { el.style.visibility = 'hidden'; continue; }
+      }
+      placed.push(r);
+    }
   }
 }
 
