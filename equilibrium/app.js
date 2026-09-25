@@ -241,7 +241,7 @@ function syncList() {
   $('len-sym').dataset.tex = lsymNow();
   renderTex($('len-sym').parentElement);
   const hasDist = state.actions.some((a) => a.type === 'dist');
-  $('dist-view').hidden = $('dist-view-label').hidden = !hasDist;
+  $('dist-view').hidden = !hasDist;
   $('dist-view').value = state.distView;
   $('show-each').checked = state.showEach;
   $('show-values').checked = state.showValues;

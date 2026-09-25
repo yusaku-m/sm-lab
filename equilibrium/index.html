@@ -36,11 +36,10 @@
         <option value="x">x で表す（切り取った自由体の長さ）</option>
       </select>
       <!-- 分布荷重があるときだけ出す -->
-      <label class="seg-label" for="dist-view" id="dist-view-label" hidden>分布荷重の表示</label>
-      <select id="dist-view" hidden>
-        <option value="dist">分布荷重のみ</option>
-        <option value="res">合力（集中荷重に読み替え）のみ</option>
-        <option value="both">両方</option>
+      <select id="dist-view" aria-label="分布荷重の表示" hidden>
+        <option value="dist">分布荷重：分布荷重のみ表示</option>
+        <option value="res">分布荷重：等価な集中荷重のみ表示</option>
+        <option value="both">分布荷重：分布荷重と等価集中荷重両方表示</option>
       </select>
       <button class="btn btn-accent play" id="play" type="button" aria-pressed="false"><span class="icon" aria-hidden="true">▶</span><span class="lbl">動かしてみる</span></button>
     </div>
