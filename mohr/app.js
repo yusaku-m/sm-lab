@@ -747,7 +747,7 @@ function update(opts = {}) {
     const phi = (state.phi * Math.PI) / 180;
     // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
     const scene = vesselOn ? vessel : rod;
-    if (scene) scene.setPhi(phi, state.plane);
+    if (scene) scene.setPhi(phi, state.plane, principalAngle(comps));
 
     const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
@@ -1062,7 +1062,8 @@ function renderModelFormulas() {
     $('v-note').innerHTML =
       '球殻の表面（x–y 面）では、どの向きに回しても同じ大きさの垂直応力しか生じず、x–y 面の応力円は<b>点</b>になります' +
       '（面内の最大せん断応力は 0）。半径方向（<span class="tex" data-tex="\\sigma_r = 0"></span>）を含めた 3 つの円で見ると、' +
-      'y–r 面・r–x 面の円の半径 <span class="tex" data-tex="\\dfrac{pr}{4t}"></span> が最大せん断応力になります。';
+      'y′–r 面・r–x′ 面の円の半径 <span class="tex" data-tex="\\dfrac{pr}{4t}"></span> が最大せん断応力になります' +
+      '（σx = σy なので主方向は決まらず、x′ = x、y′ = y としています）。';
   } else if (state.model === 'cyl') {
     $('v-eq-cap').textContent = '円筒殻の力のつり合い（内半径 r、肉厚 t、内圧 p、容器の長さ h、r ≫ t）';
     katexInto(
@@ -1080,7 +1081,7 @@ function renderModelFormulas() {
     $('v-note').innerHTML =
       '円筒殻は周方向の応力が軸方向の 2 倍なので、x–y 面（z–θ 面）の応力円は直径をもちます。' +
       'ただし <span class="tex" data-tex="\\sigma_1"></span>、<span class="tex" data-tex="\\sigma_2"></span> が同じ符号なので、' +
-      '奥行き方向（<span class="tex" data-tex="\\sigma_r = 0"></span>）を考えた y–r 面（θ–r 面）の円がいちばん大きく、' +
+      '奥行き方向（<span class="tex" data-tex="\\sigma_r = 0"></span>）を考えた r–x′ 面（x′ = 周方向 θ なので r–θ 面）の円がいちばん大きく、' +
       '最大せん断応力は <span class="tex" data-tex="\\tau_{\\max} = \\dfrac{pr}{2t}"></span> になります。';
   } else {
     return;

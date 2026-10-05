@@ -9,9 +9,13 @@ const NS = 'http://www.w3.org/2000/svg';
 export const PLANES = [
   // color: 円の色、ink: その円を選んだときの直径・面応力点・ラベル・2φ の色（文字が読めるよう少し濃い）
   { key: 'xy', label: 'x–y 面', short: 'x–y', color: '#ef6a4b', ink: '#bd442c', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
-  { key: 'yr', label: 'y–r 面', short: 'y–r', color: '#2f8f6f', ink: '#22705a', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
-  { key: 'rx', label: 'r–x 面', short: 'r–x', color: '#245b8d', ink: '#1d4b75', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
+  { key: 'yr', label: 'y′–r 面', short: 'y′–r', color: '#2f8f6f', ink: '#22705a', an: 'y′', bn: 'r' },
+  { key: 'rx', label: 'r–x′ 面', short: 'r–x′', color: '#245b8d', ink: '#1d4b75', an: 'r', bn: 'x′' },
 ];
+// x–y 以外の 2 面は、x–y 面内の主応力の方向 x′・y′ と半径方向 r がつくる面（2026-10-05、ユーザーの指示）。
+// x′ は x から θp（principalAngle）だけ回した向きで、x–y 面内で垂直応力が最大になる向き、y′ はそれと 90° の向き。
+// 元の y–r・r–x 面のままだと、ねじりのように τxy があるとき 3 つの円が主応力の円にならないため。
+// キー（URL の c=yr / rx も）は以前のまま。
 
 export function planeByKey(key) {
   return PLANES.find((p) => p.key === key) || PLANES[0];
@@ -20,13 +24,18 @@ export function planeByKey(key) {
 /**
  * 面（PLANES の 1 つ）の 2 次元の応力状態を {sx, sy, txy} の形で返す（rotated() / principalAngle() に
  * そのまま渡せる）。sx が 1 本目の軸（an）、sy が 2 本目の軸（bn）の垂直応力。
- * τyr = τrx = 0 なので、y–r 面・r–x 面のせん断は 0。
+ * x′・y′ は主方向で、r も主方向（τyr = τrx = 0）なので、y′–r 面・r–x′ 面のせん断は 0。
  */
 export function planeComps(comps, plane) {
-  return { sx: comps[plane.a], sy: comps[plane.b], txy: plane.t === 'txy' ? comps.txy : 0 };
+  if (plane.key === 'xy') return { sx: comps.sx, sy: comps.sy, txy: comps.txy };
+  const cen = (comps.sx + comps.sy) / 2;
+  const rad = Math.hypot((comps.sx - comps.sy) / 2, comps.txy);
+  const sxp = cen + rad; // σx′（x–y 面内の大きい方の主応力）
+  const syp = cen - rad; // σy′
+  return plane.key === 'yr' ? { sx: syp, sy: comps.sr, txy: 0 } : { sx: comps.sr, sy: sxp, txy: 0 };
 }
 
-/** 回した軸の名前（大文字）。r を含む面は R（講義資料の X–Y に合わせた表記）。 */
+/** 回した軸の名前（大文字）。r を含む面は R、x′・y′ は X′・Y′（講義資料の X–Y に合わせた表記）。 */
 export function planeAxisNames(plane) {
   return { A: plane.an.toUpperCase(), B: plane.bn.toUpperCase(), a: plane.an, b: plane.bn };
 }
@@ -163,9 +172,10 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const names = planeAxisNames(act);
   const shown = PLANES.filter((p) => visible[p.key]);
   const circles = shown.map((p) => {
-    const a = comps[p.a];
-    const b = comps[p.b];
-    const t = p.t === 'txy' ? comps.txy : 0; // τyr, τrx は本単元では常に 0
+    const q = planeComps(comps, p);
+    const a = q.sx;
+    const b = q.sy;
+    const t = q.txy;
     return { plane: p, c: (a + b) / 2, r: Math.hypot((a - b) / 2, t), a, b, t };
   });
 
@@ -411,7 +421,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
 /**
  * φ だけ回した微小要素に働く応力を描く。
  * 回した座標系は講義資料に合わせて大文字 X–Y（破線のガイドが元の x–y 軸）。
- * opts.plane で面を選ぶ（y–r 面なら Y–R、r–x 面なら R–X）。
+ * opts.plane で面を選ぶ（y′–r 面なら Y′–R、r–x′ 面なら R–X′）。
  */
 export function renderElement(host, comps, an, phi, opts = {}) {
   const plane = planeByKey(opts.plane || 'xy');

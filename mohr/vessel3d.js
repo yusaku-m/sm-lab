@@ -91,6 +91,7 @@ export class VesselScene {
     this.fieldKey = 'sx';
     this.phi = 0;
     this.plane = 'xy'; // 回している面（応力円で選んだ円）
+    this.thetaP = 0;
     this.fitMargin = 1.06;
     // 画面の上下に容器をずらす量（ビューの半分の高さに対する割合、正で上へ）。
     // スマホではカラーバーが図の下側に被るので、容器を上へ寄せる（app.js が設定）
@@ -393,12 +394,13 @@ export class VesselScene {
       this.probeLabels[k].scale.setScalar(lab);
       this.probeLabels[k].position.copy(p).addScaledVector(e, l + lab * 0.6);
     }
-    this.rotAxes.update(p, { x: ex, y: ey, r: er }, this.plane, this.phi, len, shaft, lab);
+    this.rotAxes.update(p, { x: ex, y: ey, r: er }, this.plane, this.phi, len, shaft, lab, this.thetaP);
   }
 
-  setPhi(phi, plane = this.plane) {
+  setPhi(phi, plane = this.plane, thetaP = this.thetaP) {
     this.phi = phi;
     this.plane = plane;
+    this.thetaP = thetaP;
     this._updateProbeMarker();
   }
 
