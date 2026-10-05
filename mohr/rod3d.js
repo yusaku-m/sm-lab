@@ -109,7 +109,7 @@ const UNIT_CONE = new THREE.ConeGeometry(1, 1, 20);
 const UP = new THREE.Vector3(0, 1, 0);
 
 /** from → to の矢印（Group を返す。以後は placeArrow() で使い回す）。 */
-function makeArrow(color) {
+export function makeArrow(color) {
   const mat = new THREE.MeshLambertMaterial({ color });
   const g = new THREE.Group();
   g.add(new THREE.Mesh(UNIT_CYL, mat));
@@ -118,7 +118,7 @@ function makeArrow(color) {
 }
 
 /** 記号ラベル（x / y / r）用のスプライト。常に正面を向き、棒の陰に隠れない。 */
-function makeLabelSprite(text, color) {
+export function makeLabelSprite(text, color) {
   const px = 128;
   const cv = document.createElement('canvas');
   cv.width = px;
@@ -146,7 +146,7 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
-function placeArrow(group, from, to, shaftR) {
+export function placeArrow(group, from, to, shaftR) {
   _v1.copy(to).sub(from);
   const len = _v1.length();
   if (len < 1e-6) {
@@ -192,6 +192,8 @@ export class RodScene {
     // 棒が重なるので、スマホでは呼び出し側から大きめの値を入れる。
     this.fitMargin = 1.06;
     this.range = { min: 0, max: 0 };
+    // 薄肉容器（vessel3d.js）と同じ枠を共有するので、表示していないときは描画も入力も止める
+    this.active = true;
 
     this._initThree();
     this._buildRod();
@@ -730,6 +732,7 @@ export class RodScene {
     el.addEventListener(
       'pointerdown',
       (ev) => {
+        if (!this.active) return;
         if (ev.button !== undefined && ev.button !== 0) return;
         const ndc = this._ndc(ev);
         this.raycaster.setFromCamera(ndc, this.camera);
@@ -834,11 +837,20 @@ export class RodScene {
     this._updateProbeMarker(sectionProps(this.geom.d));
   }
 
+  /** 表示を切り替える（非表示の間は canvas を隠し、描画ループと入力を止める）。 */
+  setActive(on) {
+    this.active = on;
+    this.renderer.domElement.style.display = on ? '' : 'none';
+    this.controls.enabled = on;
+    if (on) this._resize();
+  }
+
   // ------------------------------------------------------------ ループ
 
   _animate() {
     const loop = () => {
       this._raf = requestAnimationFrame(loop);
+      if (!this.active) return;
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     };

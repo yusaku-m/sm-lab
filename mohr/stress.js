@@ -51,6 +51,21 @@ export function stressAt(loads, sec, r, a, _x) {
 }
 
 /**
+ * 薄肉圧力容器の膜応力（講義資料「薄肉容器」に合わせた表記）。
+ * kind: 'sph'（球殻）/ 'cyl'（円筒殻）、v: {p [MPa], r [mm], t [mm]}（r は内半径、r ≫ t）。
+ *   球殻  : x = 経線方向 φ、y = 周方向 θ。σx = σy = pr/2t
+ *   円筒殻: x = 軸方向 z、  y = 周方向 θ。σx = pr/2t, σy = pr/t
+ * 半径方向は内面で −p、外面で 0 だが、r ≫ t なので資料どおり σr = 0 とする。
+ * 面内のせん断は無いので x, y, r がそのまま主方向になる（丸棒と同じ 3 面がそのまま 3 つの円）。
+ */
+export function vesselStress(kind, v) {
+  const s = (v.p * v.r) / v.t;
+  return kind === 'sph'
+    ? { sx: s / 2, sy: s / 2, sr: 0, txy: 0 }
+    : { sx: s / 2, sy: s, sr: 0, txy: 0 };
+}
+
+/**
  * 応力成分 {sx, sy, sr, txy} から主応力などを求める。
  * τyr = τrx = 0 なので r 方向はそのまま主方向であり、
  * x–y 面の 2 次元問題として解ける。

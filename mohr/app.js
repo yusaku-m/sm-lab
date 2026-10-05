@@ -3,15 +3,25 @@
 // 計算はすべて stress.js の閉じた式（Pyodide は使わない）。
 
 import { RodScene } from './rod3d.js';
+import { VesselScene } from './vessel3d.js';
 import { renderCircles, renderElement, PLANES } from './mohr2d.js';
 import {
   FIELDS, fieldByKey, sectionProps, stressAt, analyze, rotated,
-  principalAngle, gradientCss, fmt,
+  principalAngle, gradientCss, fmt, vesselStress,
 } from './stress.js';
 
 const RANGES = { N: 120, M: 600, T: 600 };
+// 薄肉容器の入力範囲。p [MPa]（負は外圧）、r = 内半径 [mm]、t = 肉厚 [mm]
+const V_RANGES = { p: [-5, 20], r: [20, 3000], t: [0.5, 100] };
+const MODELS = ['rod', 'sph', 'cyl'];
+const isVessel = () => state.model !== 'rod';
 
 const state = {
+  // 左上のパネルに出す対象。'rod' = 丸棒、'sph' = 薄肉球殻、'cyl' = 薄肉円筒殻
+  model: 'rod',
+  vessel: { p: 2, r: 500, t: 10 },
+  // URL から渡された薄肉容器の探触点（URL の単位のまま。シーン生成後に流し込む）
+  vprobe: null,
   loads: { N: 40, M: 260, T: 300 },
   geom: { d: 50, L: 250 },
   field: 'sx',
@@ -31,26 +41,61 @@ const state = {
 // サーバー不要でそのまま共有・QR化できるので、クエリではなくハッシュを使う。
 const PLANE_KEYS = PLANES.map((p) => p.key);
 
+// 薄肉容器は k=sph|cyl と vp/vr/vt（p, r, t）、探触点 vu/vv を載せ、丸棒のキーは書かない
+// （k が無ければ丸棒。以前からある丸棒の URL はそのまま読める）。
+// 探触点の単位: 円筒殻は vu = 軸方向の位置 [%]（中央 0、端 ±100）・vv = 周方向の角度 a [deg]、
+//              球殻は vu = 緯度 [deg]・vv = 経度 [deg]。
 function buildHash() {
   const q = new URLSearchParams();
-  q.set('n', String(round(state.loads.N, 1)));
-  q.set('m', String(round(state.loads.M, 1)));
-  q.set('t', String(round(state.loads.T, 1)));
-  q.set('d', String(round(state.geom.d, 1)));
-  q.set('l', String(round(state.geom.L, 1)));
-  q.set('s', String(round(state.sectionT * 100, 1)));
+  if (isVessel()) {
+    q.set('k', state.model);
+    q.set('vp', String(round(state.vessel.p, 2)));
+    q.set('vr', String(round(state.vessel.r, 1)));
+    q.set('vt', String(round(state.vessel.t, 2)));
+    const vp = vesselProbeUrl();
+    if (vp) {
+      q.set('vu', String(round(vp.u, 1)));
+      q.set('vv', String(round(vp.v, 1)));
+    }
+  } else {
+    q.set('n', String(round(state.loads.N, 1)));
+    q.set('m', String(round(state.loads.M, 1)));
+    q.set('t', String(round(state.loads.T, 1)));
+    q.set('d', String(round(state.geom.d, 1)));
+    q.set('l', String(round(state.geom.L, 1)));
+    q.set('s', String(round(state.sectionT * 100, 1)));
+  }
   q.set('f', state.field);
   q.set('p', PLANE_KEYS.filter((k) => state.planes[k]).join('.') || '-');
   q.set('q', String(round(state.phi, 1)));
-  const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
-  const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
-  q.set('pr', String(round(pr, 1)));
-  q.set('pa', String(round(pa, 1)));
+  if (!isVessel()) {
+    const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
+    const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
+    q.set('pr', String(round(pr, 1)));
+    q.set('pa', String(round(pa, 1)));
+  }
   if (state.axis.mode === 'fixed') {
     const a = state.axis;
     q.set('ax', [round(a.sMin, 1), round(a.sMax, 1), round(a.tMax, 1)].join(','));
   }
   return q.toString();
+}
+
+/** 薄肉容器の探触点を URL の単位で返す。 */
+function vesselProbeUrl() {
+  if (!vessel) return state.vprobe;
+  const q = vessel.probe;
+  const deg = (r) => (r * 180) / Math.PI;
+  return state.model === 'cyl' ? { u: q.u * 100, v: deg(q.v) } : { u: deg(q.u), v: deg(q.v) };
+}
+
+/** URL の単位の探触点を薄肉容器のシーンへ流し込む。 */
+function applyVesselProbe() {
+  if (!vessel || !state.vprobe || !isVessel()) return;
+  const { u, v } = state.vprobe;
+  const rad = (d) => (d * Math.PI) / 180;
+  if (state.model === 'cyl') vessel.setProbe(u / 100, rad(v), 'cyl');
+  else vessel.setProbe(rad(u), rad(v), 'sph');
 }
 
 function round(v, digits) {
@@ -66,6 +111,17 @@ function applyHash(hash) {
     const v = parseFloat(q.get(key));
     return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : cur;
   };
+  // k が無い（＝以前からの丸棒の URL）なら丸棒に戻す
+  state.model = MODELS.includes(q.get('k')) ? q.get('k') : 'rod';
+  state.vessel.p = num('vp', V_RANGES.p[0], V_RANGES.p[1], state.vessel.p);
+  state.vessel.r = num('vr', V_RANGES.r[0], V_RANGES.r[1], state.vessel.r);
+  state.vessel.t = num('vt', V_RANGES.t[0], V_RANGES.t[1], state.vessel.t);
+  const vu = parseFloat(q.get('vu'));
+  const vv = parseFloat(q.get('vv'));
+  const uMax = state.model === 'cyl' ? 100 : 90;
+  state.vprobe = Number.isFinite(vu) && Number.isFinite(vv)
+    ? { u: Math.min(uMax, Math.max(-uMax, vu)), v: vv }
+    : null;
   state.loads.N = num('n', -RANGES.N, RANGES.N, state.loads.N);
   state.loads.M = num('m', -RANGES.M, RANGES.M, state.loads.M);
   state.loads.T = num('t', -RANGES.T, RANGES.T, state.loads.T);
@@ -100,10 +156,9 @@ const $ = (id) => document.getElementById(id);
 const compactMq = window.matchMedia('(max-width: 760px)');
 const isCompact = () => compactMq.matches;
 compactMq.addEventListener('change', () => {
-  if (rod) {
-    rod.fitMargin = isCompact() ? 1.26 : 1.06;
-    rod.resetView();
-  }
+  if (rod) rod.fitMargin = isCompact() ? 1.26 : 1.06;
+  fitVesselToLayout();
+  for (const sc of [rod, vessel]) if (sc) sc.resetView();
   update();
 });
 
@@ -113,6 +168,12 @@ const LOAD_SPEC = [
   { key: 'N', tex: 'P', name: '荷重（引張が正）', unit: 'kN', min: -RANGES.N, max: RANGES.N, step: 1 },
   { key: 'M', tex: 'M', name: '曲げモーメント（両端）', unit: 'N·m', min: -RANGES.M, max: RANGES.M, step: 5 },
   { key: 'T', tex: 'T', name: 'ねじりモーメント', unit: 'N·m', min: -RANGES.T, max: RANGES.T, step: 5 },
+];
+
+const VESSEL_SPEC = [
+  { key: 'p', tex: 'p', name: '内圧（ゲージ圧、負は外圧）', unit: 'MPa', min: V_RANGES.p[0], max: V_RANGES.p[1], step: 0.1 },
+  { key: 'r', tex: 'r', name: '内半径', unit: 'mm', min: V_RANGES.r[0], max: V_RANGES.r[1], step: 10 },
+  { key: 't', tex: 't', name: '肉厚', unit: 'mm', min: V_RANGES.t[0], max: V_RANGES.t[1], step: 0.5 },
 ];
 
 const GEOM_SPEC = [
@@ -179,16 +240,34 @@ for (const spec of GEOM_SPEC) {
   rows.push(r);
   $('geom-fields').appendChild(r.el);
 }
+for (const spec of VESSEL_SPEC) {
+  const r = makeRow(spec, () => state.vessel[spec.key], (v) => { state.vessel[spec.key] = v; });
+  rows.push(r);
+  $('vessel-fields').appendChild(r.el);
+}
 
 // ---------------------------------------------------------------- コンター選択
 
-for (const f of FIELDS) {
-  const o = document.createElement('option');
-  o.value = f.key;
-  o.textContent = f.label;
-  $('field').appendChild(o);
+// σx・σy の呼び名は対象ごとに変える（円筒殻は x = z、球殻は x = φ。講義資料の表記）
+const FIELD_LABELS = {
+  rod: {},
+  cyl: { sx: 'σx  軸方向（z）の垂直応力', sy: 'σy  周方向（θ）の垂直応力' },
+  sph: { sx: 'σx  経線方向（φ）の垂直応力', sy: 'σy  周方向（θ）の垂直応力' },
+};
+const fieldLabel = (f) => FIELD_LABELS[state.model][f.key] || f.label;
+
+function renderFieldOptions() {
+  $('field').replaceChildren(
+    ...FIELDS.map((f) => {
+      const o = document.createElement('option');
+      o.value = f.key;
+      o.textContent = fieldLabel(f);
+      return o;
+    })
+  );
+  $('field').value = state.field;
 }
-$('field').value = state.field;
+renderFieldOptions();
 $('field').addEventListener('change', () => {
   state.field = $('field').value;
   update();
@@ -204,7 +283,7 @@ for (const p of PLANES) {
   lab.innerHTML =
     `<input type="checkbox"${state.planes[p.key] ? ' checked' : ''}>` +
     `<span class="swatch" style="background:${p.color}"></span>` +
-    `<span class="long">${p.label}</span><span class="short">${p.short} 面</span>`;
+    `<span class="long" data-plane="${p.key}">${p.label}</span><span class="short">${p.short} 面</span>`;
   const input = lab.querySelector('input');
   planeInputs[p.key] = input;
   input.addEventListener('change', (e) => {
@@ -383,6 +462,84 @@ function wrap90(deg) {
   return d;
 }
 
+// ---------------------------------------------------------------- 対象の切り替え
+
+const VESSEL_SUB = (xName) =>
+  '外面をドラッグすると探触点が動きます（膜応力は殻のどこでも同じなので、変わるのは局所座標の向きだけです）。' +
+  '赤い矢印＝内圧 <span class="tex" data-tex="p"></span>（掴んで大きさを変えられます）。' +
+  `<span class="tex" data-tex="x"></span> = ${xName}、` +
+  '<span class="tex" data-tex="y"></span> = 周方向 <span class="tex" data-tex="\\theta"></span>、' +
+  '<span class="tex" data-tex="r"></span> = 半径方向。';
+
+const MODEL_TEXT = {
+  rod: {
+    planeDesc: 'x–y 面（軸方向と周方向がつくる面）',
+    planes: null, // mohr2d.js の PLANES の label のまま
+    table: { sx: 'σx 軸方向', sy: 'σy 周方向' },
+  },
+  cyl: {
+    planeDesc: 'x–y 面（軸方向 z と周方向 θ がつくる面）',
+    planes: { xy: 'x–y 面（z–θ 面）', yr: 'y–r 面（θ–r 面）', rx: 'r–x 面（r–z 面）' },
+    table: { sx: 'σx 軸方向 z', sy: 'σy 周方向 θ' },
+    sub: VESSEL_SUB('軸方向 <span class="tex" data-tex="z"></span>'),
+  },
+  sph: {
+    planeDesc: 'x–y 面（経線方向 φ と周方向 θ がつくる面）',
+    planes: { xy: 'x–y 面（φ–θ 面）', yr: 'y–r 面（θ–r 面）', rx: 'r–x 面（r–φ 面）' },
+    table: { sx: 'σx 経線方向 φ', sy: 'σy 周方向 θ' },
+    sub: VESSEL_SUB('経線方向 <span class="tex" data-tex="\\phi"></span>'),
+  },
+};
+
+const HINT = {
+  rod:
+    'ドラッグ: <b>棒</b>＝探触点 ／ <b>背景</b>＝視点回転' +
+    '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>',
+  vessel:
+    'ドラッグ: <b>外面</b>＝探触点 ／ <b>背景</b>＝視点回転' +
+    '<span class="hint-more"> ／ <b>赤い矢印</b>＝内圧 p</span>',
+};
+
+/**
+ * 表示する対象を切り替える。fromUser（見出しのセレクトで選んだとき）で薄肉容器にしたときは
+ * 3 つの面の円を全部出す（球殻は x–y 面の円が点に潰れるので、1 つだけだと何も見えないため。
+ * 資料も「3 つの主応力に対するモールの応力円」で締めくくっている）。
+ */
+function setModel(model, opts = {}) {
+  state.model = model;
+  $('model').value = model;
+  const vesselOn = isVessel();
+  for (const el of document.querySelectorAll('[data-model]')) {
+    el.hidden = el.dataset.model !== (vesselOn ? 'vessel' : 'rod');
+  }
+  if (opts.fromUser && vesselOn) {
+    for (const k of PLANE_KEYS) {
+      state.planes[k] = true;
+      planeInputs[k].checked = true;
+    }
+  }
+  const txt = MODEL_TEXT[model];
+  $('plane-desc').textContent = txt.planeDesc;
+  for (const p of PLANES) {
+    document.querySelector(`[data-plane="${p.key}"]`).textContent = txt.planes ? txt.planes[p.key] : p.label;
+  }
+  if (vesselOn) {
+    $('vessel-sub').innerHTML = txt.sub;
+    renderTexSpans($('vessel-sub'));
+  }
+  renderFieldOptions();
+  renderModelFormulas();
+  if (rod) rod.setActive(!vesselOn);
+  if (vessel) {
+    if (vesselOn) vessel.set({ kind: model, vessel: state.vessel, field: state.field });
+    vessel.setActive(vesselOn);
+  }
+  if (vesselOn ? vessel : rod) $('hint').innerHTML = HINT[vesselOn ? 'vessel' : 'rod'];
+  update();
+}
+
+$('model').addEventListener('change', () => setModel($('model').value, { fromUser: true }));
+
 // update() は関数宣言なので巻き上げられるが、let は巻き上がらない。
 // RodScene の生成直後に setProbe → onPick → update() が走るため、
 // update() が触る変数はすべてここで先に宣言しておく
@@ -394,6 +551,8 @@ let lastHash = '';
 let shownAxis = { sMin: -60, sMax: 120, tMax: 60 };
 // 直前に描いた応力円の幾何（直径を掴んで回すのに使う）
 let mohrDrag = null;
+// 薄肉容器の 3D シーン（丸棒の生成中に update() から参照されるので、ここで先に宣言する）
+let vessel = null;
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -428,12 +587,43 @@ if (rod) {
   rod.fitMargin = isCompact() ? 1.26 : 1.06;
   rod.fitCamera(true);
   rod.setProbe(state.probe.r, (state.probe.a * Math.PI) / 180);
-  $('hint').innerHTML =
-    'ドラッグ: <b>棒</b>＝探触点 ／ <b>背景</b>＝視点回転' +
-    '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>';
+  $('hint').innerHTML = HINT.rod;
 }
 
-$('reset-view').addEventListener('click', () => rod && rod.resetView());
+// 薄肉容器のシーン。同じ #viewport に 2 つ目の canvas を置き、表示する方だけ動かす
+if (rod) {
+  try {
+    vessel = new VesselScene($('viewport'), {
+      pRange: V_RANGES.p,
+      onPick() {
+        update({ fromScene: true });
+      },
+      onPressureChange(p) {
+        state.vessel.p = p;
+        update({ fromScene: true });
+      },
+    });
+  } catch (e) {
+    $('err').hidden = false;
+    $('err').textContent = '薄肉容器の 3D 表示を初期化できませんでした。\n' + (e && e.stack ? e.stack : e);
+  }
+}
+/** 薄肉容器は縦横比が 1 に近く、スマホではカラーバー（図の下側）に被るので小さめにして上へ寄せる。 */
+function fitVesselToLayout() {
+  if (!vessel) return;
+  vessel.fitMargin = isCompact() ? 1.32 : 1.06;
+  vessel.lift = isCompact() ? 0.16 : 0;
+}
+
+if (vessel) {
+  fitVesselToLayout();
+  applyVesselProbe();
+}
+
+$('reset-view').addEventListener('click', () => {
+  const sc = isVessel() ? vessel : rod;
+  if (sc) sc.resetView();
+});
 
 // 3つのモールの円のうち一番大きいもの（直径 σ1-σ3 = 2τmax）が最大になる点を探して探触点にする。
 // σx = kN + kM·r·cos a, τ = kT·r という素直な形なので最大は必ず r = R・a = 0 か π に来るが、
@@ -472,9 +662,14 @@ function currentProbe() {
 }
 
 function currentComps() {
-  const sec = sectionProps(state.geom.d);
-  const p = currentProbe();
-  const c = stressAt(state.loads, sec, p.r, p.a, p.x);
+  let c;
+  if (isVessel()) {
+    c = vesselStress(state.model, state.vessel);
+  } else {
+    const sec = sectionProps(state.geom.d);
+    const p = currentProbe();
+    c = stressAt(state.loads, sec, p.r, p.a, p.x);
+  }
   c.thetaP = principalAngle(c);
   return c;
 }
@@ -483,22 +678,28 @@ function update(opts = {}) {
   if (updating) return;
   updating = true;
   try {
-    if (rod && !opts.fromScene && !opts.skipRod) {
-      rod.set({
-        geom: state.geom,
-        loads: state.loads,
-        field: state.field,
-        sectionT: state.sectionT,
-      });
+    const vesselOn = isVessel();
+    if (!opts.fromScene && !opts.skipRod) {
+      if (rod && !vesselOn) {
+        rod.set({
+          geom: state.geom,
+          loads: state.loads,
+          field: state.field,
+          sectionT: state.sectionT,
+        });
+      }
+      if (vessel && vesselOn) vessel.set({ kind: state.model, vessel: state.vessel, field: state.field });
     }
     for (const r of rows) r.sync();
 
     const sec = sectionProps(state.geom.d);
     const p = currentProbe();
-    const comps = stressAt(state.loads, sec, p.r, p.a, p.x);
+    const comps = currentComps();
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
-    if (rod) rod.setPhi(phi); // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
+    // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
+    const scene = vesselOn ? vessel : rod;
+    if (scene) scene.setPhi(phi);
 
     const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
@@ -511,8 +712,14 @@ function update(opts = {}) {
     });
     renderTable(comps, an, phi);
     renderColorbar();
-    renderProbe(p, sec);
-    renderCurrent(sec, p, comps);
+    if (vesselOn) {
+      renderVesselProbe();
+      renderVesselCurrent(comps, an);
+      renderVesselWarn();
+    } else {
+      renderProbe(p, sec);
+      renderCurrent(sec, p, comps);
+    }
     syncHash();
   } finally {
     updating = false;
@@ -638,6 +845,7 @@ window.addEventListener('hashchange', () => {
   const h = location.hash.replace(/^#/, '');
   if (!h || h === lastHash) return;
   lastHash = h;
+  const prevModel = state.model;
   applyHash(h);
   $('field').value = state.field;
   syncAxisUI();
@@ -650,18 +858,28 @@ window.addEventListener('hashchange', () => {
     });
     rod.setProbe(state.probe.r, (state.probe.a * Math.PI) / 180);
   }
-  update();
+  applyVesselProbe();
+  if (state.model !== prevModel) setModel(state.model);
+  else update();
 });
 
 // ---------------------------------------------------------------- 表示
 
 function renderColorbar() {
   const f = fieldByKey(state.field);
-  const r = rod ? rod.range : { min: 0, max: 1 };
+  const sc = isVessel() ? vessel : rod;
+  const r = sc ? sc.range : { min: 0, max: 1 };
   // 「単純ねじり」で σx を見ているときのように、場が全域 0 だと図が一様になる。
   // 壊れているように見えるので、その旨を書いておく。
   const flat = Math.abs(r.max - r.min) < 5e-3;
-  $('cb-title').textContent = `${f.label}　[MPa]` + (flat ? '　— この荷重では全域 0' : '');
+  // 薄肉容器は殻全体で一様（色の基準は最大の主応力の大きさ。vessel3d.js の _updateColor）
+  const note = flat
+    ? '　— この荷重では全域 0'
+    : isVessel() && vessel
+      // スマホは見出しが 2 行になって図に被るので短く
+      ? isCompact() ? `　一定 ${fmt(vessel.value)}` : `　— 殻全体で一定（${fmt(vessel.value)}）`
+      : '';
+  $('cb-title').textContent = `${fieldLabel(f)}　[MPa]` + note;
   $('cb-bar').style.background = gradientCss(f.diverging);
   $('cb-lo').textContent = fmt(r.min);
   $('cb-mid').textContent = fmt((r.min + r.max) / 2);
@@ -691,9 +909,10 @@ function renderTable(comps, an, phi) {
   const rot = rotated(comps, phi);
   const row = (name, v, note) =>
     `<tr><th>${name}</th><td>${fmt(v)}<span class="u">MPa</span>${note ? `<span class="u">${note}</span>` : ''}</td></tr>`;
+  const names = MODEL_TEXT[state.model].table;
   $('stress-table').innerHTML =
-    row('σx 軸方向', comps.sx) +
-    row('σy 周方向', comps.sy) +
+    row(names.sx, comps.sx) +
+    row(names.sy, comps.sy) +
     row('σr 半径方向', comps.sr) +
     row('τxy せん断', comps.txy) +
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
@@ -706,6 +925,30 @@ function renderTable(comps, an, phi) {
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
     row(`σX（φ=${state.phi.toFixed(0)}°）`, rot.sn) +
     row(`τXY（φ=${state.phi.toFixed(0)}°）`, rot.tau);
+}
+
+function renderVesselProbe() {
+  const q = vesselProbeUrl() || { u: 0, v: 0 };
+  const val = (v) => `<span class="val">${v.toFixed(0)}</span>`;
+  const where =
+    state.model === 'cyl'
+      ? `軸方向の位置 ${val(q.u)} %（中央 0、端 ±100）／ 周方向の角度 a = ${val(q.v)}°`
+      : `緯度 ${val(q.u)}° ／ 経度 ${val(q.v)}°`;
+  $('probe').innerHTML =
+    `<b>探触点</b>（外表面）　${where}` +
+    `　<span class="note" style="opacity:.75">（膜応力は殻のどこでも同じ）</span>`;
+}
+
+/** r ≫ t の仮定が怪しいときに注意を出す（式そのものは変えない）。 */
+function renderVesselWarn() {
+  const ratio = state.vessel.r / state.vessel.t;
+  const w = $('vessel-warn');
+  w.hidden = ratio >= 10;
+  if (!w.hidden) {
+    w.textContent =
+      `r / t = ${ratio.toFixed(1)} と肉厚が厚く、薄肉の仮定（r ≫ t、目安は r / t ≥ 10）が成り立ちにくい範囲です。` +
+      '値は薄肉の式のまま出しています。';
+  }
 }
 
 // ---------------------------------------------------------------- 数式
@@ -734,6 +977,61 @@ function renderCurrent(sec, p, comps) {
   katexInto('f-current', tex);
 }
 
+function renderVesselCurrent(comps, an) {
+  const { p, r, t } = state.vessel;
+  const n = (v) => String(round(v, 2));
+  const half = `\\frac{pr}{2t}=\\frac{${n(p)}\\times ${n(r)}}{2\\times ${n(t)}}=${fmt(comps.sx)}`;
+  const full = `\\frac{pr}{t}=\\frac{${n(p)}\\times ${n(r)}}{${n(t)}}=${fmt(comps.sy)}`;
+  const U = '\\ \\mathrm{MPa}';
+  const tex =
+    state.model === 'sph'
+      ? `\\begin{aligned}\\sigma_x&=\\sigma_y=${half}${U}\\\\[2pt]` +
+        `\\sigma_1&=\\sigma_2=${fmt(an.s1)}${U},\\quad \\sigma_3=${fmt(an.s3)}${U},\\quad \\tau_{\\max}=${fmt(an.tmax)}${U}\\end{aligned}`
+      : `\\begin{aligned}\\sigma_x&=${half}${U}\\\\[2pt]\\sigma_y&=${full}${U}\\\\[2pt]` +
+        `\\sigma_1&=${fmt(an.s1)}${U},\\quad \\sigma_2=${fmt(an.s2)}${U},\\quad \\sigma_3=${fmt(an.s3)}${U},\\quad \\tau_{\\max}=${fmt(an.tmax)}${U}\\end{aligned}`;
+  katexInto('f-current', tex);
+}
+
+/** 薄肉容器の式（対象を切り替えたときだけ描き直す）。 */
+function renderModelFormulas() {
+  if (state.model === 'sph') {
+    $('v-eq-cap').textContent = '球殻を中心を通る面で半分に切ったときの力のつり合い（内半径 r、肉厚 t、内圧 p、r ≫ t）';
+    katexInto('f-v-eq', `\\sigma_\\theta\\cdot 2\\pi r t=p\\cdot\\pi r^{2}\\quad\\Longrightarrow\\quad \\sigma_\\theta=\\sigma_\\phi=\\frac{pr}{2t}`);
+    $('v-stress-cap').textContent = '局所座標（x = 経線方向 φ、y = 周方向 θ、r = 半径方向）での応力成分と主応力';
+    katexInto(
+      'f-v-stress',
+      `\\begin{aligned}&\\sigma_x=\\sigma_\\phi=\\frac{pr}{2t},\\quad \\sigma_y=\\sigma_\\theta=\\frac{pr}{2t},\\quad \\tau_{xy}=0,\\quad \\sigma_r\\approx 0\\\\[2pt]` +
+        `&\\sigma_1=\\sigma_2=\\frac{pr}{2t},\\quad \\sigma_3=0,\\quad \\tau_{\\max}=\\frac{\\sigma_1-\\sigma_3}{2}=\\frac{pr}{4t}\\end{aligned}`
+    );
+    $('v-note').innerHTML =
+      '球殻の表面（x–y 面）では、どの向きに回しても同じ大きさの垂直応力しか生じず、x–y 面の応力円は<b>点</b>になります' +
+      '（面内の最大せん断応力は 0）。半径方向（<span class="tex" data-tex="\\sigma_r = 0"></span>）を含めた 3 つの円で見ると、' +
+      'y–r 面・r–x 面の円の半径 <span class="tex" data-tex="\\dfrac{pr}{4t}"></span> が最大せん断応力になります。';
+  } else if (state.model === 'cyl') {
+    $('v-eq-cap').textContent = '円筒殻の力のつり合い（内半径 r、肉厚 t、内圧 p、容器の長さ h、r ≫ t）';
+    katexInto(
+      'f-v-eq',
+      `\\begin{aligned}\\sigma_z\\cdot 2\\pi r t&=p\\cdot\\pi r^{2}&&\\Longrightarrow\\quad \\sigma_z=\\frac{pr}{2t}\\\\[2pt]` +
+        `\\sigma_\\theta\\cdot 2th&=p\\cdot 2rh&&\\Longrightarrow\\quad \\sigma_\\theta=\\frac{pr}{t}\\end{aligned}`
+    );
+    $('v-stress-cap').textContent = '局所座標（x = 軸方向 z、y = 周方向 θ、r = 半径方向）での応力成分と主応力';
+    katexInto(
+      'f-v-stress',
+      `\\begin{aligned}&\\sigma_x=\\sigma_z=\\frac{pr}{2t},\\quad \\sigma_y=\\sigma_\\theta=\\frac{pr}{t},\\quad \\tau_{xy}=0,\\quad \\sigma_r\\approx 0\\\\[2pt]` +
+        `&\\sigma_1=\\frac{pr}{t},\\quad \\sigma_2=\\frac{pr}{2t},\\quad \\sigma_3=0\\\\[2pt]` +
+        `&\\text{x–y 面内の最大せん断応力 }\\frac{\\sigma_1-\\sigma_2}{2}=\\frac{pr}{4t},\\qquad \\tau_{\\max}=\\frac{\\sigma_1-\\sigma_3}{2}=\\frac{pr}{2t}\\end{aligned}`
+    );
+    $('v-note').innerHTML =
+      '円筒殻は周方向の応力が軸方向の 2 倍なので、x–y 面（z–θ 面）の応力円は直径をもちます。' +
+      'ただし <span class="tex" data-tex="\\sigma_1"></span>、<span class="tex" data-tex="\\sigma_2"></span> が同じ符号なので、' +
+      '奥行き方向（<span class="tex" data-tex="\\sigma_r = 0"></span>）を考えた y–r 面（θ–r 面）の円がいちばん大きく、' +
+      '最大せん断応力は <span class="tex" data-tex="\\tau_{\\max} = \\dfrac{pr}{2t}"></span> になります。';
+  } else {
+    return;
+  }
+  renderTexSpans($('v-note'));
+}
+
 function renderStaticFormulas() {
   katexInto('f-section', `A=\\frac{\\pi d^{2}}{4},\\qquad I=\\frac{\\pi d^{4}}{64},\\qquad I_p=\\frac{\\pi d^{4}}{32}`);
   katexInto(
@@ -753,14 +1051,14 @@ function renderStaticFormulas() {
 }
 
 // ブラウザの console からの調査用（荷重や探触点の現在値を触れるようにしておく）。
-window.__mohr = { state, get rod() { return rod; }, update };
+window.__mohr = { state, get rod() { return rod; }, get vessel() { return vessel; }, update };
 
 // ---------------------------------------------------------------- 起動
 
 /** 地の文・ラベル中の [data-tex] を KaTeX で描く（記号の形を数式カードと揃えるため）。 */
-function renderTexSpans() {
+function renderTexSpans(root = document) {
   if (typeof katex === 'undefined') return;
-  for (const el of document.querySelectorAll('.tex[data-tex]')) {
+  for (const el of root.querySelectorAll('.tex[data-tex]')) {
     katex.render(el.dataset.tex, el, { throwOnError: false, displayMode: false });
   }
 }
@@ -772,7 +1070,7 @@ function boot() {
   phiNum.value = String(round(state.phi, 1));
   renderTexSpans();
   renderStaticFormulas();
-  update();
+  setModel(state.model); // 中で update() する
 }
 
 if (document.readyState === 'loading') {

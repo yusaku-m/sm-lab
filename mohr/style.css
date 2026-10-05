@@ -168,6 +168,27 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
 .toolbar-tight { gap: 8px; margin-bottom: 10px; }
 .toolbar-tight .btn { padding: 6px 12px; font-size: 0.78rem; }
 
+/* 丸棒／薄肉球殻／薄肉円筒殻の切り替え。見出しの一部として読めるよう、見出しの字面に合わせる */
+.card h2 .model-select {
+  font-family: var(--display-font);
+  font-size: inherit;
+  padding: 2px 30px 2px 12px;
+  margin-right: 2px;
+  border-color: var(--accent-soft);
+  background-color: #fdf0ea;
+  color: var(--accent-strong);
+  cursor: pointer;
+}
+.warn {
+  margin: 8px 0 0;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: #fdf0ea;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
 .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
 .check {
   display: inline-flex;
