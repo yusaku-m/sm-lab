@@ -325,7 +325,7 @@ PCでも同じ見た目）。HTML上も`#viewport`の子要素なので、動か
 - 応力は `stress.js` の `vesselStress()`。**局所座標は資料の表記**: 円筒殻は x = 軸方向 z・y = 周方向 θ、
   球殻は x = 経線方向 φ・y = 周方向 θ、どちらも r = 半径方向。σx = pr/2t、σy = pr/t（球殻は pr/2t）、
   σr = τ = 0（資料どおり σr は 0 とみなす）。キー `{sx, sy, sr, txy}` が丸棒と同じなので、
-  `mohr2d.js` の 3 面（xy/yr/rx）がそのまま「z–θ / θ–r / r–z 面」になる。r は**内半径**
+  `mohr2d.js` の 3 面（x–y / y′–r / r–x′）が円筒殻では「z–θ / z–r / r–θ 面」になる（x′ = θ）。r は**内半径**
 - 3D は `vessel3d.js` の `VesselScene`（丸棒と同じ `#viewport` に 2 つ目の canvas を置き、
   `setActive()` で表示中の方だけ描画・入力を受ける。`rod3d.js` の `makeArrow` 等を import している）。
   表示上の外半径は 100 に正規化、肉厚だけ t/r の比で描く。膜応力は一様なので殻は 1 色
