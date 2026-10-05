@@ -146,7 +146,8 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
-export function placeArrow(group, from, to, shaftR) {
+/** headScale: 矢じりの大きさの倍率（細かい矢印を並べる内圧の図で、矢印だと分かるよう大きくする）。 */
+export function placeArrow(group, from, to, shaftR, headScale = 1) {
   _v1.copy(to).sub(from);
   const len = _v1.length();
   if (len < 1e-6) {
@@ -156,8 +157,8 @@ export function placeArrow(group, from, to, shaftR) {
   group.visible = true;
   _v1.normalize();
   _q.setFromUnitVectors(UP, _v1);
-  const headLen = Math.min(len * 0.42, shaftR * 4.2);
-  const headR = shaftR * 2.1;
+  const headLen = Math.min(len * (headScale > 1 ? 0.55 : 0.42), shaftR * 4.2 * headScale);
+  const headR = shaftR * 2.1 * headScale;
   const shaft = group.children[0];
   const head = group.children[1];
   shaft.quaternion.copy(_q);

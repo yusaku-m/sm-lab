@@ -466,7 +466,7 @@ function wrap90(deg) {
 
 const VESSEL_SUB = (xName) =>
   '外面をドラッグすると探触点が動きます（膜応力は殻のどこでも同じなので、変わるのは局所座標の向きだけです）。' +
-  '赤い矢印＝内圧 <span class="tex" data-tex="p"></span>（掴んで大きさを変えられます）。' +
+  '赤い矢印＝内圧 <span class="tex" data-tex="p"></span>。<b>容器の内側（内面・切り口・矢印）を上下にドラッグ</b>すると内圧が変わります（上で増加）。' +
   `<span class="tex" data-tex="x"></span> = ${xName}、` +
   '<span class="tex" data-tex="y"></span> = 周方向 <span class="tex" data-tex="\\theta"></span>、' +
   '<span class="tex" data-tex="r"></span> = 半径方向。';
@@ -497,7 +497,7 @@ const HINT = {
     '<span class="hint-more"> ／ <b>矢印・円弧</b>＝荷重 ／ <b>黒いリング</b>＝断面位置</span>',
   vessel:
     'ドラッグ: <b>外面</b>＝探触点 ／ <b>背景</b>＝視点回転' +
-    '<span class="hint-more"> ／ <b>赤い矢印</b>＝内圧 p</span>',
+    '<span class="hint-more"> ／ <b>内側を上下</b>＝内圧 p</span>',
 };
 
 /**

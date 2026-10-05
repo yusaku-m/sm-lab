@@ -2,7 +2,7 @@
 //  - 殻の一部を楔形に切り欠いて、内面と内圧 p の矢印を見せる
 //  - 膜応力は殻のどこでも同じなので、コンターは一色（カラーバーの位置で大きさを読む）
 //  - 外表面をドラッグすると探触点が動く（局所座標 x / y / r の向きだけが変わる）
-//  - 内圧の矢印（中央の 1 本）を掴んでドラッグすると p が変わる
+//  - 内面・切り口・内圧の矢印のどこかを掴んで上下にドラッグすると p が変わる
 //
 // 表示上の寸法は外半径を 100 に正規化している（r が 50 mm でも 2 m でも同じ大きさに見える）。
 // 肉厚だけは t / r の比で描く（薄すぎると見えないので下限を設ける）。
@@ -168,23 +168,13 @@ export class VesselScene {
     this.scene.add(this.shellGroup);
     this.outers = [];
 
-    // 内圧の矢印（資料と同じく赤）。中央の 1 本に記号 p と掴み代を付ける
+    // 内圧の矢印（資料と同じく赤）。窓以外の内面全体に並べる（本数は形で変わるので必要なだけ作る）
     this.pGroup = new THREE.Group();
     this.scene.add(this.pGroup);
     this.pArrows = [];
-    for (let i = 0; i < 9; i++) {
-      const a = makeArrow(0xd23c3c);
-      this.pGroup.add(a);
-      this.pArrows.push(a);
-    }
     this.pLabel = makeLabelSprite('p', '#c0392b');
     this.pLabel.material.depthTest = true; // 殻の内側にあるので、殻の陰では隠れるようにする
     this.pGroup.add(this.pLabel);
-    this.pGrab = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 12, 10),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
-    );
-    this.pGroup.add(this.pGrab);
 
     // 探触点（rod3d.js と同じ見た目: 黒い x / y / r と、φ≠0 のときだけ紫・金の X / Y）
     this.probeGroup = new THREE.Group();
@@ -228,11 +218,12 @@ export class VesselScene {
     for (const m of this.shellGroup.children) m.geometry.dispose();
     this.shellGroup.clear();
     this.outers = [];
+    this.insides = []; // 触ると内圧のドラッグになる面（内面・切り口）
     const w = this.wall;
     const ri = RO - w;
     const outer = (g) => this.outers.push(add(g, this.shellMat));
-    const inner = (g) => add(g, this.innerMat);
-    const cut = (g) => add(g, this.cutMat);
+    const inner = (g) => this.insides.push(add(g, this.innerMat));
+    const cut = (g) => this.insides.push(add(g, this.cutMat));
     const add = (g, mat = this.shellMat) => {
       const m = new THREE.Mesh(g, mat);
       this.shellGroup.add(m);
@@ -296,42 +287,86 @@ export class VesselScene {
     this.value = v;
   }
 
-  /** 内圧の矢印。切り欠きから見える奥の内面に、内側から壁を押す向きで描く。 */
+  /** 窓（切り欠き）の中か。a は円筒殻の角度 / 球殻の経度 [rad]、margin だけ広めにとる。 */
+  _inWindow(a, cut, margin) {
+    const TAU = 2 * Math.PI;
+    const t = (((a - cut[0] + margin) % TAU) + TAU) % TAU;
+    return t <= cut[1] - cut[0] + 2 * margin;
+  }
+
+  /** 内圧の矢印を置く点（内面上の点 wall と外向きの法線 n）。窓を除く内面全体に並べる。 */
+  _pressureSpots() {
+    const ri = RO - this.wall;
+    const spots = [];
+    const margin = 9 * DEG;
+    if (this.kind === 'cyl') {
+      const hi = HALF - this.wall;
+      const nx = 7;
+      for (let i = 0; i < nx; i++) {
+        const x = -hi + ((i + 0.5) * 2 * hi) / nx;
+        for (let j = 0; j < 12; j++) {
+          const a = (j * 30 + 15) * DEG;
+          if (x > 0 && this._inWindow(a, CYL_CUT, margin)) continue;
+          const n = cylBasis(a).er;
+          spots.push({ wall: n.clone().multiplyScalar(ri).setX(x), n });
+        }
+      }
+      // 端板の内面（軸方向に押す）
+      for (const sx of [-1, 1]) {
+        const n = new THREE.Vector3(sx, 0, 0);
+        spots.push({ wall: new THREE.Vector3(sx * hi, 0, 0), n });
+        for (let j = 0; j < 6; j++) {
+          const a = (j * 60 + 30) * DEG;
+          if (sx > 0 && this._inWindow(a, CYL_CUT, margin)) continue;
+          spots.push({ wall: new THREE.Vector3(sx * hi, ri * 0.6 * Math.cos(a), ri * 0.6 * Math.sin(a)), n });
+        }
+      }
+    } else {
+      for (const latDeg of [-90, -66, -42, -18, 6, 30, 54, 78]) {
+        const lat = latDeg * DEG;
+        const m = Math.max(1, Math.round(13 * Math.cos(lat)));
+        for (let j = 0; j < m; j++) {
+          const lon = ((j + 0.5) / m) * 2 * Math.PI + latDeg * 0.37 * DEG; // 段ごとに少しずらす
+          if (lat > 0 && this._inWindow(lon, SPH_CUT, margin)) continue;
+          const n = sphBasis(lat, lon).er;
+          spots.push({ wall: n.clone().multiplyScalar(ri), n });
+        }
+      }
+    }
+    return spots;
+  }
+
+  /** 内圧の矢印。内面に、内側から壁を押す向きで描く（負＝外圧なら内向き）。 */
   _updatePressure() {
     const ri = RO - this.wall;
     const p = this.vessel.p;
     const pMax = Math.max(Math.abs(this.pRange[0]), Math.abs(this.pRange[1]));
     const mag = Math.min(1, Math.abs(p) / pMax);
-    const len = RO * (0.16 + 0.4 * mag);
-    const spots = [];
-    // 窓の奥に見える内面に置く（先頭の 1 本に記号 p と掴み代を付ける）
-    if (this.kind === 'cyl') {
-      for (const a of [190, 150, 230]) for (const x of [0.5, 0.2, 0.8]) spots.push({ x: x * HALF, n: cylBasis(a * DEG).er });
-    } else {
-      const lc = (SPH_CUT[0] + SPH_CUT[1]) / 2 + Math.PI;
-      for (const [lat, dl] of [[-55, 0], [-80, 0], [-35, 0], [-50, -45], [-50, 45], [-30, -40], [-30, 40], [-60, -90], [-60, 90]]) {
-        spots.push({ x: 0, n: sphBasis(lat * DEG, lc + dl * DEG).er });
-      }
+    const len = RO * (0.11 + 0.22 * mag);
+    const spots = this._pressureSpots();
+    while (this.pArrows.length < spots.length) {
+      const a = makeArrow(0xd23c3c);
+      this.pGroup.add(a);
+      this.pArrows.push(a);
     }
     const show = mag > 0.004;
-    spots.forEach((s, i) => {
-      const wall = s.n.clone().multiplyScalar(ri).add(new THREE.Vector3(s.x, 0, 0));
-      const tail = wall.clone().addScaledVector(s.n, -len);
-      // 正（内圧）なら壁を外へ押す向き、負なら内向き
-      if (!show) this.pArrows[i].visible = false;
-      else if (p >= 0) placeArrow(this.pArrows[i], tail, wall, RO * 0.016);
-      else placeArrow(this.pArrows[i], wall, tail, RO * 0.016);
-      if (i === 0) {
-        const mid = wall.clone().addScaledVector(s.n, -len / 2);
-        this.pGrab.position.copy(mid);
-        this.pGrab.scale.setScalar(RO * 0.09);
-        this.pGrab.userData.dirWorld = s.n.clone().negate(); // 中心へ引くと p が増える
-        this.pLabel.visible = show;
-        this.pLabel.scale.setScalar(RO * 0.2);
-        // 記号は矢印の横（軸方向にずらす）に置く
-        this.pLabel.position.copy(tail).add(new THREE.Vector3(RO * 0.12, RO * 0.06, 0));
+    this.pArrows.forEach((arrow, i) => {
+      const s = spots[i];
+      if (!s || !show) {
+        arrow.visible = false;
+        return;
       }
+      const tail = s.wall.clone().addScaledVector(s.n, -len);
+      if (p >= 0) placeArrow(arrow, tail, s.wall, RO * 0.013, 2);
+      else placeArrow(arrow, s.wall, tail, RO * 0.013, 2);
     });
+    // 記号 p は窓から見える底のあたりに 1 つだけ
+    const n = this.kind === 'cyl' ? cylBasis(200 * DEG).er : sphBasis(-50 * DEG, (SPH_CUT[0] + SPH_CUT[1]) / 2 + Math.PI).er;
+    const at = n.clone().multiplyScalar(ri - len - RO * 0.12);
+    if (this.kind === 'cyl') at.x = HALF * 0.45;
+    this.pLabel.visible = show;
+    this.pLabel.scale.setScalar(RO * 0.2);
+    this.pLabel.position.copy(at);
   }
 
   _probePoint() {
@@ -458,15 +493,6 @@ export class VesselScene {
     );
   }
 
-  _screenDir(point, dirWorld) {
-    const a = point.clone().project(this.camera);
-    const b = point.clone().add(dirWorld.clone().multiplyScalar(RO * 0.2)).project(this.camera);
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const v = new THREE.Vector2(((b.x - a.x) * rect.width) / 2, (-(b.y - a.y) * rect.height) / 2);
-    if (v.length() < 1e-6) return new THREE.Vector2(0, -1);
-    return v.normalize();
-  }
-
   _bindPointer() {
     // rod3d.js と同じく、親要素のキャプチャ段階で OrbitControls より先に判定する
     this.container.addEventListener(
@@ -475,11 +501,12 @@ export class VesselScene {
         if (!this.active) return;
         if (ev.button !== undefined && ev.button !== 0) return;
         this.raycaster.setFromCamera(this._ndc(ev), this.camera);
-        // 掴み代は p = 0 で矢印が消えていても同じ場所に残してある（引けば内圧を入れられる）
-        // 殻の内側にあるので、外面より手前に見えているときだけ掴む
+        // 外面 → 探触点。内面・切り口・内圧の矢印のどこを触っても内圧のドラッグにする
+        // （矢印だけを掴ませると判定が狭すぎた。p = 0 で矢印が消えていても内面を引けば入れられる）
         const hit = this.raycaster.intersectObjects(this.outers, false)[0];
-        const grab = this.raycaster.intersectObject(this.pGrab, false)[0];
-        if (grab && (!hit || grab.distance < hit.distance)) {
+        const targets = [...this.insides, ...this.pArrows.filter((a) => a.visible)];
+        const inside = this.raycaster.intersectObjects(targets, true)[0];
+        if (inside && (!hit || inside.distance < hit.distance)) {
           ev.stopPropagation();
           ev.preventDefault();
           this._startPressureDrag(ev);
@@ -496,15 +523,18 @@ export class VesselScene {
   }
 
   _startPressureDrag(ev) {
-    const start = { x: ev.clientX, y: ev.clientY };
-    const dir2 = this._screenDir(this.pGrab.position, this.pGrab.userData.dirWorld);
+    // どこを掴んでも同じ操作になるよう、向きは画面の上下に固定する（上へ引くと p が増える）。
+    // 触った点の法線を使うと、奥の壁（法線が視線に沿う）では向きが定まらないため
+    const startY = ev.clientY;
     const base = this.vessel.p;
     const [lo, hi] = this.pRange;
     const move = (e) => {
-      const t = ((e.clientX - start.x) * dir2.x + (e.clientY - start.y) * dir2.y) / 230;
+      const t = (startY - e.clientY) / 230;
       const v = Math.min(hi, Math.max(lo, base + t * (hi - lo)));
       this.vessel.p = Math.round(v * 10) / 10;
-      this.rebuild();
+      // 形は変わらないので殻は作り直さない（色と矢印だけ）
+      this._updateColor();
+      this._updatePressure();
       this.onPressureChange(this.vessel.p);
     };
     const up = () => {
