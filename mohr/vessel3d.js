@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { makeArrow, makeLabelSprite, placeArrow } from './rod3d.js';
+import { makeArrow, makeLabelSprite, placeArrow, RotatedAxes } from './rod3d.js';
 import { vesselStress, analyze, fieldByKey, colorAt } from './stress.js';
 
 const RO = 100; // 表示上の外半径
@@ -90,6 +90,7 @@ export class VesselScene {
     this.vessel = { p: 2, r: 500, t: 10 };
     this.fieldKey = 'sx';
     this.phi = 0;
+    this.plane = 'xy'; // 回している面（応力円で選んだ円）
     this.fitMargin = 1.06;
     // 画面の上下に容器をずらす量（ビューの半分の高さに対する割合、正で上へ）。
     // スマホではカラーバーが図の下側に被るので、容器を上へ寄せる（app.js が設定）
@@ -176,16 +177,15 @@ export class VesselScene {
     this.pLabel.material.depthTest = true; // 殻の内側にあるので、殻の陰では隠れるようにする
     this.pGroup.add(this.pLabel);
 
-    // 探触点（rod3d.js と同じ見た目: 黒い x / y / r と、φ≠0 のときだけ紫・金の X / Y）
+    // 探触点（rod3d.js と同じ見た目: 黒い x / y / r と、φ≠0 のときだけ紫・金の回した 2 軸）
     this.probeGroup = new THREE.Group();
     this.scene.add(this.probeGroup);
     this.probeDot = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0x1d2932 }));
     this.probeGroup.add(this.probeDot);
     this.probeAxes = { x: makeArrow(0x1d2932), y: makeArrow(0x1d2932), r: makeArrow(0x1d2932) };
     this.probeLabels = { x: makeLabelSprite('x', '#1d2932'), y: makeLabelSprite('y', '#1d2932'), r: makeLabelSprite('r', '#1d2932') };
-    this.probeAxesRot = { X: makeArrow(0x7d5ba6), Y: makeArrow(0xb8860b) };
-    this.probeLabelsRot = { X: makeLabelSprite('X', '#7d5ba6'), Y: makeLabelSprite('Y', '#b8860b') };
-    for (const o of [this.probeAxes, this.probeLabels, this.probeAxesRot, this.probeLabelsRot]) {
+    this.rotAxes = new RotatedAxes(this.probeGroup);
+    for (const o of [this.probeAxes, this.probeLabels]) {
       for (const k in o) this.probeGroup.add(o[k]);
     }
   }
@@ -393,27 +393,12 @@ export class VesselScene {
       this.probeLabels[k].scale.setScalar(lab);
       this.probeLabels[k].position.copy(p).addScaledVector(e, l + lab * 0.6);
     }
-    const showRot = Math.abs(this.phi) > 1e-4;
-    for (const k of ['X', 'Y']) {
-      this.probeAxesRot[k].visible = showRot;
-      this.probeLabelsRot[k].visible = showRot;
-    }
-    if (showRot) {
-      // stress.js の rotated() と同じく反時計まわりに φ（rod3d.js と同じ式）
-      const c = Math.cos(this.phi);
-      const s = Math.sin(this.phi);
-      const eX = ex.clone().multiplyScalar(c).addScaledVector(ey, s);
-      const eY = ex.clone().multiplyScalar(-s).addScaledVector(ey, c);
-      for (const [k, e] of [['X', eX], ['Y', eY]]) {
-        placeArrow(this.probeAxesRot[k], p, p.clone().addScaledVector(e, len), shaft);
-        this.probeLabelsRot[k].scale.setScalar(lab);
-        this.probeLabelsRot[k].position.copy(p).addScaledVector(e, len + lab * 0.6);
-      }
-    }
+    this.rotAxes.update(p, { x: ex, y: ey, r: er }, this.plane, this.phi, len, shaft, lab);
   }
 
-  setPhi(phi) {
+  setPhi(phi, plane = this.plane) {
     this.phi = phi;
+    this.plane = plane;
     this._updateProbeMarker();
   }
 

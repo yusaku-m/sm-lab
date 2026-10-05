@@ -142,6 +142,55 @@ export function makeLabelSprite(text, color) {
   return sp;
 }
 
+// 面ごとの回す 2 軸（mohr2d.js の PLANES の an / bn と同じ）
+const PLANE_AXES = { xy: ['x', 'y'], yr: ['y', 'r'], rx: ['r', 'x'] };
+
+/**
+ * 探触点の「回した 2 軸」（応力要素の図の X–Y。y–r 面なら Y–R、r–x 面なら R–X）。
+ * 色は 1 本目が紫・2 本目が金。応力要素図（σX=橙赤 / σY=青）とは揃えない——揃えると
+ * 荷重グリフ M（橙赤）・P（青）と同じ色になり「軸と荷重が対応している」と誤解されるため
+ * （x/y/r を黒一色にした経緯と同じ。CLAUDE.md の mohr/ の節）。φ≈0 では元の軸と重なるだけなので出さない。
+ * rod3d.js / vessel3d.js で共有する。
+ */
+export class RotatedAxes {
+  constructor(group) {
+    const COLORS = [[0x7d5ba6, '#7d5ba6'], [0xb8860b, '#b8860b']];
+    this.arrows = COLORS.map(([c]) => makeArrow(c));
+    // ラベルは色ごとに X / Y / R を用意して、面に合わせて出し分ける
+    this.labels = COLORS.map(([, css]) => ({
+      x: makeLabelSprite('X', css),
+      y: makeLabelSprite('Y', css),
+      r: makeLabelSprite('R', css),
+    }));
+    for (const a of this.arrows) group.add(a);
+    for (const set of this.labels) for (const k in set) group.add(set[k]);
+  }
+
+  /** basis: {x, y, r} の単位ベクトル、phi: 反時計まわり [rad]（stress.js の rotated() と同じ向き）。 */
+  update(p, basis, planeKey, phi, len, shaft, lab) {
+    const show = Math.abs(phi) > 1e-4;
+    const [an, bn] = PLANE_AXES[planeKey] || PLANE_AXES.xy;
+    const c = Math.cos(phi);
+    const s = Math.sin(phi);
+    const ea = basis[an];
+    const eb = basis[bn];
+    const dirs = [
+      ea.clone().multiplyScalar(c).addScaledVector(eb, s),
+      ea.clone().multiplyScalar(-s).addScaledVector(eb, c),
+    ];
+    const names = [an, bn];
+    for (let i = 0; i < 2; i++) {
+      this.arrows[i].visible = show;
+      for (const k in this.labels[i]) this.labels[i][k].visible = show && k === names[i];
+      if (!show) continue;
+      placeArrow(this.arrows[i], p, p.clone().addScaledVector(dirs[i], len), shaft);
+      const l = this.labels[i][names[i]];
+      l.scale.setScalar(lab);
+      l.position.copy(p).addScaledVector(dirs[i], len + lab * 0.6);
+    }
+  }
+}
+
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -189,6 +238,7 @@ export class RodScene {
     this.sectionT = 0.28; // 0..1（棒の左端からの相対位置）
     this.probe = null; // {x, r, a}
     this.phi = 0; // rad（応力要素の回転角。3D図の頂点は動かさず、探触点の回した軸の表示にだけ使う）
+    this.plane = 'xy'; // 回している面（応力円で選んだ円）
     // 図に収めるときの余白。ビューが小さいとカラーバー等のオーバーレイと
     // 棒が重なるので、スマホでは呼び出し側から大きめの値を入れる。
     this.fitMargin = 1.06;
@@ -362,21 +412,8 @@ export class RodScene {
     };
     for (const k in this.probeLabels) this.probeGroup.add(this.probeLabels[k]);
 
-    // φ≠0（応力要素を回したとき）だけ出す回転後の X–Y 軸。応力要素図（mohr2d.js の
-    // renderElement）の σX/σY と同じ橙赤/青にすると、荷重グリフ M（橙赤）・P（青）と
-    // 色が一致してしまい、探触点のすぐ隣にあるだけに「軸と荷重が対応している」という
-    // 誤解を招く（黒一色にした経緯と同じ理由、CLAUDE.mdのmohr/の節を参照）。
-    // そのためP/M/T（青/橙赤/緑）と被らない紫・金で塗る。
-    this.probeAxesRot = {
-      X: makeArrow(0x7d5ba6),
-      Y: makeArrow(0xb8860b),
-    };
-    for (const k in this.probeAxesRot) this.probeGroup.add(this.probeAxesRot[k]);
-    this.probeLabelsRot = {
-      X: makeLabelSprite('X', '#7d5ba6'),
-      Y: makeLabelSprite('Y', '#b8860b'),
-    };
-    for (const k in this.probeLabelsRot) this.probeGroup.add(this.probeLabelsRot[k]);
+    // φ≠0（応力要素を回したとき）だけ出す回転後の 2 軸（色の理由は RotatedAxes のコメント）
+    this.rotAxes = new RotatedAxes(this.probeGroup);
   }
 
   // ------------------------------------------------------------ 更新
@@ -638,25 +675,8 @@ export class RodScene {
     this.probeLabels.y.position.copy(p).addScaledVector(ey, len + lab * 0.6);
     this.probeLabels.r.position.copy(p).addScaledVector(er, len * 0.75 + lab * 0.6);
 
-    // 回した X–Y 軸（φ≈0 では黒い x/y と重なるだけなので出さない）
-    const showRot = Math.abs(this.phi) > 1e-4;
-    this.probeAxesRot.X.visible = showRot;
-    this.probeAxesRot.Y.visible = showRot;
-    this.probeLabelsRot.X.visible = showRot;
-    this.probeLabelsRot.Y.visible = showRot;
-    if (showRot) {
-      // stress.js の rotated() と同じ式（反時計まわりに φ）。ex を x、ey を y として扱う
-      const c2 = Math.cos(this.phi);
-      const s2 = Math.sin(this.phi);
-      const eX = ex.clone().multiplyScalar(c2).addScaledVector(ey, s2);
-      const eY = ex.clone().multiplyScalar(-s2).addScaledVector(ey, c2);
-      placeArrow(this.probeAxesRot.X, p, p.clone().addScaledVector(eX, len), R * 0.05);
-      placeArrow(this.probeAxesRot.Y, p, p.clone().addScaledVector(eY, len), R * 0.05);
-      this.probeLabelsRot.X.scale.setScalar(lab);
-      this.probeLabelsRot.Y.scale.setScalar(lab);
-      this.probeLabelsRot.X.position.copy(p).addScaledVector(eX, len + lab * 0.6);
-      this.probeLabelsRot.Y.position.copy(p).addScaledVector(eY, len + lab * 0.6);
-    }
+    // 回した 2 軸（選んでいる面の。φ≈0 では元の軸と重なるだけなので出さない）
+    this.rotAxes.update(p, { x: ex, y: ey, r: er }, this.plane, this.phi, len, R * 0.05, lab);
   }
 
   // ------------------------------------------------------------ カメラ
@@ -833,8 +853,9 @@ export class RodScene {
   }
 
   /** 応力要素の回転角 φ [rad]。頂点ジオメトリは作り直さず、探触点の回した X–Y 軸だけ更新する。 */
-  setPhi(phi) {
+  setPhi(phi, plane = this.plane) {
     this.phi = phi;
+    this.plane = plane;
     this._updateProbeMarker(sectionProps(this.geom.d));
   }
 

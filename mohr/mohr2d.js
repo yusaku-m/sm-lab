@@ -7,10 +7,28 @@ import { rotated, principalAngle, fmt } from './stress.js';
 const NS = 'http://www.w3.org/2000/svg';
 
 export const PLANES = [
-  { key: 'xy', label: 'x–y 面（軸–周方向）', short: 'x–y', color: '#ef6a4b', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
-  { key: 'yr', label: 'y–r 面（周–半径方向）', short: 'y–r', color: '#2f8f6f', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
-  { key: 'rx', label: 'r–x 面（半径–軸方向）', short: 'r–x', color: '#245b8d', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
+  { key: 'xy', label: 'x–y 面', short: 'x–y', color: '#ef6a4b', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
+  { key: 'yr', label: 'y–r 面', short: 'y–r', color: '#2f8f6f', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
+  { key: 'rx', label: 'r–x 面', short: 'r–x', color: '#245b8d', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
 ];
+
+export function planeByKey(key) {
+  return PLANES.find((p) => p.key === key) || PLANES[0];
+}
+
+/**
+ * 面（PLANES の 1 つ）の 2 次元の応力状態を {sx, sy, txy} の形で返す（rotated() / principalAngle() に
+ * そのまま渡せる）。sx が 1 本目の軸（an）、sy が 2 本目の軸（bn）の垂直応力。
+ * τyr = τrx = 0 なので、y–r 面・r–x 面のせん断は 0。
+ */
+export function planeComps(comps, plane) {
+  return { sx: comps[plane.a], sy: comps[plane.b], txy: plane.t === 'txy' ? comps.txy : 0 };
+}
+
+/** 回した軸の名前（大文字）。r を含む面は R（講義資料の X–Y に合わせた表記）。 */
+export function planeAxisNames(plane) {
+  return { A: plane.an.toUpperCase(), B: plane.bn.toUpperCase(), a: plane.an, b: plane.bn };
+}
 
 function el(tag, attrs, text) {
   const n = document.createElementNS(NS, tag);
@@ -122,6 +140,7 @@ function arrow(g, x1, y1, x2, y2, color, width = 1.6, head = 6) {
  * an      : analyze() の戻り値（主応力の表示に使う）
  * visible : {xy:bool, yr:bool, rx:bool}
  * phi     : 回転角 [rad]
+ * opts.active : 直径を回して見せる面のキー（実線で描く。既定 'xy'）
  */
 export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   // fontScale: スマホでは SVG 全体が縮小表示されるので、文字だけ大きめに描く
@@ -137,6 +156,10 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   const pw = W - ml - mr;
   let ph = H - mt - mb;
 
+  const activeKey = opts.active || 'xy';
+  const act = planeByKey(activeKey);
+  const pc = planeComps(comps, act); // 選んでいる面の応力（直径・面応力点・2φ に使う）
+  const names = planeAxisNames(act);
   const shown = PLANES.filter((p) => visible[p.key]);
   const circles = shown.map((p) => {
     const a = comps[p.a];
@@ -198,16 +221,18 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   tMax = shownT;
 
   // 直径を掴んで回すのに使う幾何（SVG のユーザー座標）。φ に依存しない量だけを返す。
-  const mainC = circles.find((c) => c.plane.key === 'xy');
-  const drag = visible.xy && mainC && mainC.r * k > 2
+  const mainC = circles.find((c) => c.plane.key === activeKey);
+  const drag = visible[activeKey] && mainC && mainC.r * k > 2
     ? {
         cx: X(mainC.c),
         cy: Y(0),
         r: mainC.r * k,
-        // φ=0 のときの X 面の点の画面角。φ を増やすと点はここから -2φ 動く
-        alpha0: Math.atan2(Y(comps.txy) - Y(0), X(comps.sx) - X(mainC.c)),
+        // φ=0 のときの 1 本目の軸（X 面など）の点の画面角。φ を増やすと点はここから -2φ 動く
+        alpha0: Math.atan2(Y(pc.txy) - Y(0), X(pc.sx) - X(mainC.c)),
       }
     : null;
+  // クリックでどの円を選んだか判定するための幾何（SVG のユーザー座標）
+  const hit = circles.map((c) => ({ key: c.plane.key, cx: X(c.c), cy: Y(0), r: c.r * k }));
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'モールの応力円' });
   const font = 'Inter, "Noto Sans JP", sans-serif';
@@ -255,10 +280,11 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   axes.appendChild(el('text', { x: ml + 4, y: mt + ph - F(5), 'text-anchor': 'start', 'font-size': F(12), fill: '#1d2932', 'font-family': serif, 'font-style': 'italic', 'data-fixed': '1' }, 'τ  [MPa] ↓正'));
   svg.appendChild(axes);
 
-  // --- 円（主円 xy は最後に描いて前面に）
-  const ordered = circles.slice().sort((p, q) => (p.plane.key === 'xy' ? 1 : 0) - (q.plane.key === 'xy' ? 1 : 0));
+  // --- 円（選んでいる面の円は最後に描いて前面に、実線で）
+  const isAct = (c) => (c.plane.key === activeKey ? 1 : 0);
+  const ordered = circles.slice().sort((p, q) => isAct(p) - isAct(q));
   for (const c of ordered) {
-    const main = c.plane.key === 'xy';
+    const main = c.plane.key === activeKey;
     const g = el('g', { 'clip-path': CLIP });
     g.appendChild(
       el('circle', {
@@ -295,10 +321,10 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   });
   svg.appendChild(pg);
 
-  // --- x–y 面の面応力点と回転
-  if (visible.xy) {
-    const main = circles.find((c) => c.plane.key === 'xy');
-    const rot = rotated(comps, phi);
+  // --- 選んでいる面の面応力点と回転
+  if (visible[activeKey]) {
+    const main = mainC;
+    const rot = rotated(pc, phi);
     const A = { s: rot.sn, t: rot.tau };
     const B = { s: rot.sn90, t: -rot.tau };
     const g = el('g', { 'clip-path': CLIP });
@@ -307,19 +333,19 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     // φ=0 の直径（基準）を点線で残しておく。回した直径との角度差がそのまま 2φ になる。
     g.appendChild(
       el('line', {
-        x1: X(comps.sx), y1: Y(comps.txy), x2: X(comps.sy), y2: Y(-comps.txy),
+        x1: X(pc.sx), y1: Y(pc.txy), x2: X(pc.sy), y2: Y(-pc.txy),
         stroke: '#bd442c', 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'stroke-opacity': 0.45,
       })
     );
-    g.appendChild(el('circle', { cx: X(comps.sx), cy: Y(comps.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
-    g.appendChild(el('circle', { cx: X(comps.sy), cy: Y(-comps.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
+    g.appendChild(el('circle', { cx: X(pc.sx), cy: Y(pc.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
+    g.appendChild(el('circle', { cx: X(pc.sy), cy: Y(-pc.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
 
     // 2φ の円弧
     if (Math.abs(phi) > 1e-4 && main.r * k > 10) {
       const rr = Math.min(main.r * k * 0.42, 34);
       // 画面上の角度（y 下向き）で組み立てる。縦軸の向きに依存しない。
       const ang = (s, t) => Math.atan2(Y(t) - Y(0), X(s) - X(main.c));
-      const a0 = ang(comps.sx, comps.txy);
+      const a0 = ang(pc.sx, pc.txy);
       let da = ang(A.s, A.t) - a0;
       while (da > Math.PI) da -= 2 * Math.PI;
       while (da < -Math.PI) da += 2 * Math.PI;
@@ -346,7 +372,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     // 直径（2つの面を結ぶ弦）
     g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
 
-    [[A, 'X面', 1], [B, 'Y面', 2]].forEach(([pt, name, prio]) => {
+    [[A, `${names.A}面`, 1], [B, `${names.B}面`, 2]].forEach(([pt, name, prio]) => {
       if (!inPlot(pt.s, pt.t)) return;
       const px = X(pt.s);
       const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
@@ -370,13 +396,13 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     el('text', {
       // まとめ行は横に長いので、他のラベルほど大きくしない（スマホで枠から出るため）
       x: ml, y: H - 4, 'font-size': Math.min(F(10.5), 12.2), fill: '#627078', 'font-family': font, 'data-fixed': '1',
-    }, `τmax = ${fmt(an.tmax)} ／ σeq = ${fmt(an.vm)} ／ ${fs > 1.2 ? '' : 'σ₁ の向き '}θp = ${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}°`)
+    }, `τmax = ${fmt(an.tmax)} ／ σeq = ${fmt(an.vm)} ／ ${act.short} 面 θp = ${((principalAngle(pc) * 180) / Math.PI).toFixed(1)}°`)
   );
 
   host.replaceChildren(svg);
   // 挿入してからでないと getBBox で実測できないので、ここで重なりを解消する
   avoidLabelOverlaps(svg, F(13), W);
-  return { sMin, sMax, tMax, drag };
+  return { sMin, sMax, tMax, drag, hit };
 }
 
 // ------------------------------------------------------------ 応力要素の図
@@ -384,8 +410,12 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
 /**
  * φ だけ回した微小要素に働く応力を描く。
  * 回した座標系は講義資料に合わせて大文字 X–Y（破線のガイドが元の x–y 軸）。
+ * opts.plane で面を選ぶ（y–r 面なら Y–R、r–x 面なら R–X）。
  */
 export function renderElement(host, comps, an, phi, opts = {}) {
+  const plane = planeByKey(opts.plane || 'xy');
+  const nm = planeAxisNames(plane);
+  comps = planeComps(comps, plane);
   // fontScale: スマホでは小さく縮小表示されるので、文字だけ大きく描く
   // （そのぶんラベルがはみ出さないよう viewBox も少し広げる）
   const fs = opts.fontScale || 1;
@@ -404,8 +434,8 @@ export function renderElement(host, comps, an, phi, opts = {}) {
   const guide = el('g', { opacity: 0.35 });
   guide.appendChild(el('line', { x1: c - 104, y1: c, x2: c + 104, y2: c, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
   guide.appendChild(el('line', { x1: c, y1: c - 104, x2: c, y2: c + 104, stroke: '#627078', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
-  guide.appendChild(el('text', { x: c + 108, y: c + 4, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'x'));
-  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': F(11), fill: '#627078', 'font-family': font }, 'y'));
+  guide.appendChild(el('text', { x: c + 108, y: c + 4, 'font-size': F(11), fill: '#627078', 'font-family': font }, nm.a));
+  guide.appendChild(el('text', { x: c - 5, y: c - 108, 'font-size': F(11), fill: '#627078', 'font-family': font }, nm.b));
   svg.appendChild(guide);
 
   // 回転した基底（画面は y 上向きなので sin の符号を反転して描く）
@@ -424,9 +454,9 @@ export function renderElement(host, comps, an, phi, opts = {}) {
   const g = el('g', {});
   // 垂直応力（面の外向き法線方向）
   const faces = [
-    { dir: n, val: rot.sn, color: '#bd442c', label: 'σX' },
+    { dir: n, val: rot.sn, color: '#bd442c', label: `σ${nm.A}` },
     { dir: [-n[0], -n[1]], val: rot.sn, color: '#bd442c' },
-    { dir: t, val: rot.sn90, color: '#245b8d', label: 'σY' },
+    { dir: t, val: rot.sn90, color: '#245b8d', label: `σ${nm.B}` },
     { dir: [-t[0], -t[1]], val: rot.sn90, color: '#245b8d' },
   ];
   for (const f of faces) {
@@ -466,7 +496,7 @@ export function renderElement(host, comps, an, phi, opts = {}) {
         x: c + t[0] * (h + 20) + n[0] * 40,
         y: c + t[1] * (h + 20) + n[1] * 40 + 4,
         'text-anchor': 'middle', 'font-size': F(12), fill: '#2f8f6f', 'font-family': font,
-      }, 'τXY')
+      }, `τ${nm.A}${nm.B}`)
     );
   }
   svg.appendChild(g);

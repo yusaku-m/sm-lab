@@ -4,7 +4,9 @@
 
 import { RodScene } from './rod3d.js';
 import { VesselScene } from './vessel3d.js';
-import { renderCircles, renderElement, PLANES } from './mohr2d.js';
+import {
+  renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames,
+} from './mohr2d.js';
 import {
   FIELDS, fieldByKey, sectionProps, stressAt, analyze, rotated,
   principalAngle, gradientCss, fmt, vesselStress,
@@ -12,7 +14,7 @@ import {
 
 const RANGES = { N: 120, M: 600, T: 600 };
 // 薄肉容器の入力範囲。p [MPa]（負は外圧）、r = 内半径 [mm]、t = 肉厚 [mm]
-const V_RANGES = { p: [-5, 20], r: [20, 3000], t: [0.5, 100] };
+const V_RANGES = { p: [-20, 20], r: [20, 3000], t: [0.5, 100] };
 const MODELS = ['rod', 'sph', 'cyl'];
 const isVessel = () => state.model !== 'rod';
 
@@ -26,6 +28,8 @@ const state = {
   geom: { d: 50, L: 250 },
   field: 'sx',
   planes: { xy: true, yr: false, rx: false },
+  // 直径を回して見せる面（応力円で選んだ円）。実線で描き、φ・応力要素・3D の回した軸はこの面で考える
+  plane: 'xy',
   phi: 0, // deg
   sectionT: 0.3,
   probe: { r: 25, a: 0 }, // 探触点（r [mm], a [deg]）。初期値は setGeomDefaults で直径に合わせる
@@ -68,6 +72,7 @@ function buildHash() {
   q.set('f', state.field);
   q.set('p', PLANE_KEYS.filter((k) => state.planes[k]).join('.') || '-');
   q.set('q', String(round(state.phi, 1)));
+  if (state.plane !== 'xy') q.set('c', state.plane); // 選んでいる円（既定の x–y 面なら書かない）
   if (!isVessel()) {
     const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
     const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
@@ -129,6 +134,7 @@ function applyHash(hash) {
   state.geom.L = num('l', 120, 800, state.geom.L);
   state.sectionT = num('s', 4, 88, state.sectionT * 100) / 100;
   state.phi = num('q', -180, 180, state.phi);
+  state.plane = PLANE_KEYS.includes(q.get('c')) ? q.get('c') : 'xy';
   if (q.has('f') && FIELDS.some((f) => f.key === q.get('f'))) state.field = q.get('f');
   if (q.has('p')) {
     const on = q.get('p').split('.');
@@ -136,6 +142,7 @@ function applyHash(hash) {
   }
   state.probe.r = num('pr', 0, state.geom.d / 2, state.geom.d / 2);
   state.probe.a = num('pa', -360, 360, state.probe.a);
+  if (!state.planes[state.plane]) state.planes[state.plane] = true; // 選んでいる円は必ず表示する
   // ax が無いハッシュは「自動」を意味する（付いていた設定を持ち越さない）
   state.axis = { ...state.axis, mode: 'auto' };
   if (q.has('ax')) {
@@ -283,11 +290,15 @@ for (const p of PLANES) {
   lab.innerHTML =
     `<input type="checkbox"${state.planes[p.key] ? ' checked' : ''}>` +
     `<span class="swatch" style="background:${p.color}"></span>` +
-    `<span class="long" data-plane="${p.key}">${p.label}</span><span class="short">${p.short} 面</span>`;
+    `<span class="long">${p.label}</span><span class="short">${p.short} 面</span>`;
   const input = lab.querySelector('input');
   planeInputs[p.key] = input;
   input.addEventListener('change', (e) => {
     state.planes[p.key] = e.target.checked;
+    // 選んでいる円を消したら、残っている円のうち最初のものを選び直す
+    if (!e.target.checked && state.plane === p.key) {
+      state.plane = PLANE_KEYS.find((k) => state.planes[k]) || state.plane;
+    }
     update();
   });
   $('plane-checks').appendChild(lab);
@@ -422,14 +433,48 @@ function svgUserPoint(ev) {
   return p.matrixTransform(m.inverse());
 }
 
+// クリックした位置の円（PLANES のキー）。円周に近いものを優先し、無ければ点を含む円のうち最も小さいもの
+// （円筒殻のように大きな円の中に小さな円がある場合、内側をクリックすると小さい方を選ぶ）。
+function circleAt(q) {
+  let best = null;
+  let bestD = Infinity;
+  for (const c of mohrHit) {
+    // 選んでいる円を優先（円筒殻の円は σ1 などの点で接しているので、そこを掴んでも今の円を回せるように）
+    const d = Math.abs(Math.hypot(q.x - c.cx, q.y - c.cy) - c.r) - (c.key === state.plane ? 6 : 0);
+    if (d < 9 && d < bestD) {
+      best = c;
+      bestD = d;
+    }
+  }
+  if (best) return best.key;
+  const inside = mohrHit
+    .filter((c) => Math.hypot(q.x - c.cx, q.y - c.cy) <= c.r)
+    .sort((a, b) => a.r - b.r);
+  return inside.length ? inside[0].key : null;
+}
+
+// 円を選んでいる面にする（φ はその面で測り直すので 0 に戻す）
+function selectPlane(key) {
+  if (!key || key === state.plane) return;
+  state.plane = key;
+  setPhi(0);
+}
+
+let suppressClick = false;
+
 $('mohr-plot').addEventListener('pointerdown', (ev) => {
-  // スマホは画面スクロールを邪魔しないよう対象外（φ はスライダーで変えられる）
+  suppressClick = false;
+  // スマホは画面スクロールを邪魔しないよう対象外（φ はスライダーで変えられる。円の選択は click で）
   if (!mohrDrag || (ev.pointerType === 'touch' && isCompact())) return;
   const q = svgUserPoint(ev);
   if (!q) return;
+  // 別の円の円周・内側を押したときは回さない（click で選び直す）
+  const target = circleAt(q);
+  if (target && target !== state.plane) return;
   const dist = Math.hypot(q.x - mohrDrag.cx, q.y - mohrDrag.cy);
   // 円周のまわりに十分な掴み代をとる（小さい円でも掴めるように下限を設ける）
   if (Math.abs(dist - mohrDrag.r) > Math.max(22, mohrDrag.r * 0.45)) return;
+  suppressClick = true;
   ev.preventDefault();
   $('mohr-plot').classList.add('grabbing');
 
@@ -451,9 +496,20 @@ $('mohr-plot').addEventListener('pointerdown', (ev) => {
   window.addEventListener('pointercancel', up);
 });
 
+$('mohr-plot').addEventListener('click', (ev) => {
+  if (suppressClick) {
+    suppressClick = false; // 直径を回したあとの click では選び直さない
+    return;
+  }
+  const q = svgUserPoint(ev);
+  if (q) selectPlane(circleAt(q));
+});
+
+/** 選んでいる面の主軸の向き [deg]。 */
+const planeThetaP = () => (principalAngle(planeComps(currentComps(), planeByKey(state.plane))) * 180) / Math.PI;
 $('phi-zero').addEventListener('click', () => setPhi(0));
-$('phi-principal').addEventListener('click', () => setPhi(wrap90((currentComps().thetaP * 180) / Math.PI)));
-$('phi-tmax').addEventListener('click', () => setPhi(wrap90((currentComps().thetaP * 180) / Math.PI + 45)));
+$('phi-principal').addEventListener('click', () => setPhi(wrap90(planeThetaP())));
+$('phi-tmax').addEventListener('click', () => setPhi(wrap90(planeThetaP() + 45)));
 
 function wrap90(deg) {
   let d = deg;
@@ -473,19 +529,13 @@ const VESSEL_SUB = (xName) =>
 
 const MODEL_TEXT = {
   rod: {
-    planeDesc: 'x–y 面（軸方向と周方向がつくる面）',
-    planes: null, // mohr2d.js の PLANES の label のまま
     table: { sx: 'σx 軸方向', sy: 'σy 周方向' },
   },
   cyl: {
-    planeDesc: 'x–y 面（軸方向 z と周方向 θ がつくる面）',
-    planes: { xy: 'x–y 面（z–θ 面）', yr: 'y–r 面（θ–r 面）', rx: 'r–x 面（r–z 面）' },
     table: { sx: 'σx 軸方向 z', sy: 'σy 周方向 θ' },
     sub: VESSEL_SUB('軸方向 <span class="tex" data-tex="z"></span>'),
   },
   sph: {
-    planeDesc: 'x–y 面（経線方向 φ と周方向 θ がつくる面）',
-    planes: { xy: 'x–y 面（φ–θ 面）', yr: 'y–r 面（θ–r 面）', rx: 'r–x 面（r–φ 面）' },
     table: { sx: 'σx 経線方向 φ', sy: 'σy 周方向 θ' },
     sub: VESSEL_SUB('経線方向 <span class="tex" data-tex="\\phi"></span>'),
   },
@@ -519,10 +569,6 @@ function setModel(model, opts = {}) {
     }
   }
   const txt = MODEL_TEXT[model];
-  $('plane-desc').textContent = txt.planeDesc;
-  for (const p of PLANES) {
-    document.querySelector(`[data-plane="${p.key}"]`).textContent = txt.planes ? txt.planes[p.key] : p.label;
-  }
   if (vesselOn) {
     $('vessel-sub').innerHTML = txt.sub;
     renderTexSpans($('vessel-sub'));
@@ -551,6 +597,8 @@ let lastHash = '';
 let shownAxis = { sMin: -60, sMax: 120, tMax: 60 };
 // 直前に描いた応力円の幾何（直径を掴んで回すのに使う）
 let mohrDrag = null;
+// 直前に描いた円の位置（クリックで選ぶのに使う）
+let mohrHit = [];
 // 薄肉容器の 3D シーン（丸棒の生成中に update() から参照されるので、ここで先に宣言する）
 let vessel = null;
 
@@ -699,16 +747,19 @@ function update(opts = {}) {
     const phi = (state.phi * Math.PI) / 180;
     // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
     const scene = vesselOn ? vessel : rod;
-    if (scene) scene.setPhi(phi);
+    if (scene) scene.setPhi(phi, state.plane);
 
     const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
       fontScale: isCompact() ? 1.45 : 1,
       axis: state.axis,
+      active: state.plane,
     });
     shownAxis = drawn;
     mohrDrag = drawn.drag;
+    mohrHit = drawn.hit;
     renderElement($('element-plot'), comps, an, phi, {
       fontScale: isCompact() ? 2.1 : 1,
+      plane: state.plane,
     });
     renderTable(comps, an, phi);
     renderColorbar();
@@ -906,7 +957,10 @@ function renderProbe(p, sec) {
 }
 
 function renderTable(comps, an, phi) {
-  const rot = rotated(comps, phi);
+  const plane = planeByKey(state.plane);
+  const pc = planeComps(comps, plane);
+  const nm = planeAxisNames(plane);
+  const rot = rotated(pc, phi);
   const row = (name, v, note) =>
     `<tr><th>${name}</th><td>${fmt(v)}<span class="u">MPa</span>${note ? `<span class="u">${note}</span>` : ''}</td></tr>`;
   const names = MODEL_TEXT[state.model].table;
@@ -921,10 +975,10 @@ function renderTable(comps, an, phi) {
     row('σ₃ 最小主応力', an.s3) +
     row('τmax 最大せん断', an.tmax) +
     row('σeq von Mises', an.vm) +
-    `<tr><th>主軸の向き θp</th><td>${((principalAngle(comps) * 180) / Math.PI).toFixed(1)}<span class="u">deg</span></td></tr>` +
+    `<tr><th>主軸の向き θp（${plane.short} 面）</th><td>${((principalAngle(pc) * 180) / Math.PI).toFixed(1)}<span class="u">deg</span></td></tr>` +
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
-    row(`σX（φ=${state.phi.toFixed(0)}°）`, rot.sn) +
-    row(`τXY（φ=${state.phi.toFixed(0)}°）`, rot.tau);
+    row(`σ${nm.A}（φ=${state.phi.toFixed(0)}°）`, rot.sn) +
+    row(`τ${nm.A}${nm.B}（φ=${state.phi.toFixed(0)}°）`, rot.tau);
 }
 
 function renderVesselProbe() {
