@@ -757,6 +757,8 @@ function update(opts = {}) {
     shownAxis = drawn;
     mohrDrag = drawn.drag;
     mohrHit = drawn.hit;
+    // φ のスライダーも選んでいる円の色にする（どの面を回しているか分かるように）
+    phiRange.style.accentColor = planeByKey(state.plane).color;
     renderElement($('element-plot'), comps, an, phi, {
       fontScale: isCompact() ? 2.1 : 1,
       plane: state.plane,

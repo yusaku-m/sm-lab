@@ -7,9 +7,10 @@ import { rotated, principalAngle, fmt } from './stress.js';
 const NS = 'http://www.w3.org/2000/svg';
 
 export const PLANES = [
-  { key: 'xy', label: 'x–y 面', short: 'x–y', color: '#ef6a4b', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
-  { key: 'yr', label: 'y–r 面', short: 'y–r', color: '#2f8f6f', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
-  { key: 'rx', label: 'r–x 面', short: 'r–x', color: '#245b8d', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
+  // color: 円の色、ink: その円を選んだときの直径・面応力点・ラベル・2φ の色（文字が読めるよう少し濃い）
+  { key: 'xy', label: 'x–y 面', short: 'x–y', color: '#ef6a4b', ink: '#bd442c', a: 'sx', b: 'sy', t: 'txy', an: 'x', bn: 'y' },
+  { key: 'yr', label: 'y–r 面', short: 'y–r', color: '#2f8f6f', ink: '#22705a', a: 'sy', b: 'sr', t: 'tyr', an: 'y', bn: 'r' },
+  { key: 'rx', label: 'r–x 面', short: 'r–x', color: '#245b8d', ink: '#1d4b75', a: 'sr', b: 'sx', t: 'trx', an: 'r', bn: 'x' },
 ];
 
 export function planeByKey(key) {
@@ -321,7 +322,7 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
   });
   svg.appendChild(pg);
 
-  // --- 選んでいる面の面応力点と回転
+  // --- 選んでいる面の面応力点と回転（色は選んでいる円に合わせる）
   if (visible[activeKey]) {
     const main = mainC;
     const rot = rotated(pc, phi);
@@ -334,11 +335,11 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
     g.appendChild(
       el('line', {
         x1: X(pc.sx), y1: Y(pc.txy), x2: X(pc.sy), y2: Y(-pc.txy),
-        stroke: '#bd442c', 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'stroke-opacity': 0.45,
+        stroke: act.ink, 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'stroke-opacity': 0.45,
       })
     );
-    g.appendChild(el('circle', { cx: X(pc.sx), cy: Y(pc.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
-    g.appendChild(el('circle', { cx: X(pc.sy), cy: Y(-pc.txy), r: 3.2, fill: '#ef6a4b', 'fill-opacity': 0.45 }));
+    g.appendChild(el('circle', { cx: X(pc.sx), cy: Y(pc.txy), r: 3.2, fill: act.color, 'fill-opacity': 0.45 }));
+    g.appendChild(el('circle', { cx: X(pc.sy), cy: Y(-pc.txy), r: 3.2, fill: act.color, 'fill-opacity': 0.45 }));
 
     // 2φ の円弧
     if (Math.abs(phi) > 1e-4 && main.r * k > 10) {
@@ -356,33 +357,33 @@ export function renderCircles(host, comps, an, visible, phi, opts = {}) {
       g.appendChild(
         el('path', {
           d: `M ${p0[0]} ${p0[1]} A ${rr} ${rr} 0 0 ${sweep} ${p1[0]} ${p1[1]}`,
-          fill: 'none', stroke: '#bd442c', 'stroke-width': 1.2, 'stroke-dasharray': '3 3',
+          fill: 'none', stroke: act.ink, 'stroke-width': 1.2, 'stroke-dasharray': '3 3',
         })
       );
       g.appendChild(
         el('text', {
           x: X(main.c) + (rr + F(12)) * Math.cos(a0 + da / 2),
           y: Y(0) + (rr + F(12)) * Math.sin(a0 + da / 2) + F(3.5),
-          'text-anchor': 'middle', 'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
+          'text-anchor': 'middle', 'font-size': F(10.5), fill: act.ink, 'font-family': font,
           'data-nudge': '20',
         }, `2φ=${((2 * phi * 180) / Math.PI).toFixed(0)}°`)
       );
     }
 
     // 直径（2つの面を結ぶ弦）
-    g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: '#bd442c', 'stroke-width': 1.6 }));
+    g.appendChild(el('line', { x1: X(A.s), y1: Y(A.t), x2: X(B.s), y2: Y(B.t), stroke: act.ink, 'stroke-width': 1.6 }));
 
     [[A, `${names.A}面`, 1], [B, `${names.B}面`, 2]].forEach(([pt, name, prio]) => {
       if (!inPlot(pt.s, pt.t)) return;
       const px = X(pt.s);
       const toRight = px <= cx; // 右寄りの点はラベルを内側（左）へ出して枠から出さない
-      g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: '#bd442c', 'stroke-width': 2 }));
+      g.appendChild(el('circle', { cx: px, cy: Y(pt.t), r: 5, fill: '#fffdf7', stroke: act.ink, 'stroke-width': 2 }));
       gLab.appendChild(
         el('text', {
           x: px + (toRight ? 9 : -9),
           y: Y(pt.t) + (Y(pt.t) <= Y(0) ? -F(8) : F(14)),
           'text-anchor': toRight ? 'start' : 'end',
-          'font-size': F(10.5), fill: '#bd442c', 'font-family': font,
+          'font-size': F(10.5), fill: act.ink, 'font-family': font,
           'data-nudge': String(prio),
         }, `${name} (${fmt(pt.s)}, ${fmt(pt.t)})`)
       );
