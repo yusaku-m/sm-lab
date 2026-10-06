@@ -25,6 +25,22 @@
 }
 .load-row.type-support { border-left-color: #2f8f6f; }
 
+/* 支点と荷重パネルの見出しの右に置く小さな梁の図（app.js の beamMini）。狭い画面では見出しの下へ回る */
+.ctrl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 6px;
+}
+.ctrl-title { flex: 0 0 auto; }
+.mini-beam { flex: 1 1 260px; max-width: 420px; margin-left: auto; }
+/* 図が小さいと記号の大きさが下限（10px）に張り付いて読みにくいので、ここだけ大きめに */
+.mini-beam .fig-label .katex { font-size: 1.45em; }
+@media (max-width: 760px) {
+  .mini-beam { max-width: none; margin-left: 0; }
+}
+
 .formula .cap b { color: var(--ink); }
 .val-v { color: #245b8d; }
 .val-m { color: #bd442c; }

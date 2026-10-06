@@ -88,16 +88,24 @@ let plotPxCache = 0; // PC でのグラフの高さ [px]（fitPlots() が決め�
 
 applyHash(location.hash.replace(/^#/, ''));
 
-const beam = new BeamFigure($('beam'), {
+const beamHandlers = {
   onChange: (ch) => {
-    if (!ch) { draw(); return; }
+    if (!ch) { draw(); drawMini(); return; }
     if (ch.load) state.loads[ch.load.k] = ch.load.value;
     if (ch.support) state.supports[ch.support.k] = ch.support.value;
     update();
   },
-  onSelect: (sel) => { state.sel = sel; syncLists(); },
+  onSelect: (sel) => { state.sel = sel; syncLists(); drawMini(); },
   onCut: (t) => { stopAnim(); setCut(t); },
-});
+};
+const beam = new BeamFigure($('beam'), beamHandlers);
+// 「支点と荷重」パネルの見出しの横の小さな梁の図。上の図と同じ操作（ドラッグ）ができる。
+// 断面は出さない（showCut: false）。断面の位置だけが変わる draw() では描き直さない（アニメーション中に毎フレーム描かないため）
+const beamMini = new BeamFigure($('beam-mini'), beamHandlers);
+function drawMini() {
+  if (!ctx) return;
+  beamMini.render({ ...state, showCut: false, showValues: false }, ctx);
+}
 const plotOpts = (key) => ({
   onCut: (t) => {
     if (t === null) return;
@@ -131,6 +139,7 @@ function update() {
   ctx = { sol, items, dia, subs, extTex, names: loadNames(state.loads) };
   syncLists();
   draw();
+  drawMini();
   fitPlots();
   syncHash();
 }
@@ -293,7 +302,7 @@ function buildLists(sig) {
       <button class="btn del" type="button" data-f="del" aria-label="消す">×</button>`;
     sl.append(row);
     const q = (f) => row.querySelector(`[data-f="${f}"]`);
-    row.addEventListener('focusin', () => { state.sel = { kind: 'support', k: i }; syncLists(); draw(); });
+    row.addEventListener('focusin', () => { state.sel = { kind: 'support', k: i }; syncLists(); draw(); drawMini(); });
     q('type').addEventListener('change', (e) => {
       const s2 = state.supports[i];
       s2.type = e.target.value;
@@ -323,8 +332,8 @@ function buildLists(sig) {
     renderTex(row);
     const q = (f) => row.querySelector(`[data-f="${f}"]`);
     const on = (f, ev, fn) => { const el = q(f); if (el) el.addEventListener(ev, fn); };
-    row.addEventListener('focusin', () => { state.sel = { kind: 'load', k }; syncLists(); draw(); });
-    on('sel', 'click', () => { state.sel = { kind: 'load', k }; syncLists(); draw(); });
+    row.addEventListener('focusin', () => { state.sel = { kind: 'load', k }; syncLists(); draw(); drawMini(); });
+    on('sel', 'click', () => { state.sel = { kind: 'load', k }; syncLists(); draw(); drawMini(); });
     for (const [f, key] of Object.entries(POS_KEY)) {
       on(f, 'change', (e) => {
         const a2 = state.loads[k];
@@ -546,7 +555,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // PC ではグラフの高さを画面の高さから決めているので、画面の大きさが変わったら描き直す
-window.addEventListener('resize', () => { draw(); fitPlots(); });
+window.addEventListener('resize', () => { draw(); drawMini(); fitPlots(); });
 for (const b of document.querySelectorAll('.add-load')) b.addEventListener('click', () => { stopAnim(); addLoad(b.dataset.type); update(); });
 for (const b of document.querySelectorAll('.add-sup')) b.addEventListener('click', () => { stopAnim(); addSupport(b.dataset.type); update(); });
 $('Lmm').addEventListener('change', (e) => {
@@ -735,7 +744,7 @@ function boot() {
   requestAnimationFrame(() => fitPlots());
   // KaTeX のフォントが読み込まれると式の幅・折り返しが変わるので、そのあとでもう一度
   // （グラフのラベルの重なりも実測で判定しているので、高さが変わらなくても 1 回描き直す）
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { draw(); fitPlots(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { draw(); drawMini(); fitPlots(); });
 }
 
 window.__sfd = { state, update, get ctx() { return ctx; }, beam, sfd, bmd };

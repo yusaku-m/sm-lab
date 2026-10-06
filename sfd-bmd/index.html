@@ -49,8 +49,14 @@
 
   <!-- ------------------------------------------------ 梁の設定 -->
   <section class="card controls-card">
-    <p class="kicker">Beam</p>
-    <h2>支点と荷重</h2>
+    <div class="ctrl-head">
+      <div class="ctrl-title">
+        <p class="kicker">Beam</p>
+        <h2>支点と荷重</h2>
+      </div>
+      <!-- 小さな梁の図（上の図と同じ操作でドラッグできる。一覧を編集しながら形を確かめる用） -->
+      <div class="figure mini-beam" id="beam-mini"></div>
+    </div>
     <p class="sub">位置は <code>2L/3</code>・<code>0.35L</code> のように長さの分数で、または数字だけ（mm）で入力できます。固定支点は梁の端にだけ置けます。反力は力とモーメントのつり合いから求めます（静定梁のみ）。</p>
     <div class="toolbar toolbar-tight" id="presets"></div>
 
