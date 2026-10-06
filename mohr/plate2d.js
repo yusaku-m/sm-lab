@@ -122,10 +122,23 @@ export function renderPlate(host, s, e, phi, opts = {}) {
   svg.appendChild(ax);
 
   // --- 板と変形後の形（誇張）
-  // 変位 u = εx·X + (γ/2)·Y, v = (γ/2)·X + εy·Y（剛体回転を除いた対称な形）。角の変位が板の 14% 程度になる倍率
+  // 変位 u = εx·X + (γ/2)·Y, v = (γ/2)·X + εy·Y（剛体回転を除いた対称な形）。
+  // 誇張の倍率は基本 MAG（500 倍）で固定し、変形後の角が図の枠をはみ出すときだけ（キリのよい数へ）下げる
+  // （2026-10-06、ユーザーの指示。倍率が一定なら、荷重を変えたときの変形の大きさの違いがそのまま見える）。
+  // 縮む側も、板の半分以上が潰れて形が分からなくなる（角が中心を越える）手前で止める。
   const g2 = e.gxy / 2;
-  const peak = Math.max(Math.abs(e.ex) + Math.abs(g2), Math.abs(e.ey) + Math.abs(g2)) * 1e-6;
-  const mag = peak > 1e-9 ? niceScale(0.14 / peak) : 0;
+  const px = (Math.abs(e.ex) + Math.abs(g2)) * 1e-6; // 角の x 方向の変位の最大（板の半辺あたり）
+  const py = (Math.abs(e.ey) + Math.abs(g2)) * 1e-6;
+  const peak = Math.max(px, py);
+  let mag = 0;
+  if (peak > 1e-9) {
+    const room = Math.min(
+      px > 0 ? ((W / 2 - 8) / h - 1) / px : Infinity, // 左右の枠
+      py > 0 ? (Math.min(cy, H - cy) - 8) / h / py - 1 / py : Infinity, // 上下の枠
+      0.8 / peak // 潰れすぎない
+    );
+    mag = room >= MAG ? MAG : niceScale(room);
+  }
   svg.appendChild(
     el('rect', { x: cx - h, y: cy - h, width: 2 * h, height: 2 * h, fill: '#f3ede0', stroke: INK, 'stroke-width': 1.6 })
   );
@@ -144,45 +157,52 @@ export function renderPlate(host, s, e, phi, opts = {}) {
     label(svg, W - 8, H - 10, `破線: 変形後（×${mag.toLocaleString('en-US')} に誇張）`, '#bd442c', 'end', F(10.5));
   }
 
-  // --- 応力の矢印（符号どおりの向き。長さは ref を基準にした相対値）
-  // ref は最大の成分（下限 50 MPa）。ドラッグ中は app.js が固定して渡す（掴んだ矢印が指の下から逃げないように）
+  // --- 応力の矢印（符号どおりの向き。長さは応力に比例し、ref のとき NLEN・TLEN）
+  // 最小の長さを設けないのは、ドラッグで引張⇄圧縮をまたぐとき矢印が 0 まで縮んでから反対向きに伸びる
+  // （跳ばない）ようにするため。ref は最大の成分（下限 50 MPa）。ドラッグ中は app.js が固定して渡す。
   const ref = opts.ref || Math.max(Math.abs(s.sx), Math.abs(s.sy), Math.abs(s.txy), 50);
   const gap = 12;
-  const len = (v) => NLEN0 + NLEN * (Math.abs(v) / ref); // 垂直応力の矢印の長さ
-  const tlen = (v) => Math.min(h - 8, TLEN0 + TLEN * (Math.abs(v) / ref)); // せん断の矢印の半分の長さ
+  const len = (v) => Math.min(NMAX, NLEN * (Math.abs(v) / ref)); // 垂直応力の矢印の長さ
+  const tlen = (v) => Math.min(h - 8, TLEN * (Math.abs(v) / ref)); // せん断の矢印の半分の長さ
   const zero = (v) => Math.abs(v) < 0.05;
   const ga = el('g', {});
+  // 当たり判定（見えない太い線）。矢印そのものに重ね、0 のときも面のそばを掴めるよう最小の長さを持たせる。
+  // data-dir は「その向きに動かすと値が増える」向き（SVG の座標、y 下向き）
   const grabs = el('g', {});
-  const handle = (key, x, y, color) => {
-    grabs.appendChild(el('circle', { cx: x, cy: y, r: 6, fill: color, 'fill-opacity': 0.16, stroke: color, 'stroke-width': 1.3 }));
-    grabs.appendChild(el('circle', { cx: x, cy: y, r: 15, fill: 'transparent', 'data-grab': key }));
+  const hit = (key, dir, x1, y1, x2, y2) => {
+    if (!opts.editable) return;
+    grabs.appendChild(el('line', {
+      x1, y1, x2, y2, stroke: 'transparent', 'stroke-width': 18, 'stroke-linecap': 'butt', // round だと端が膨らんで隣の矢印の判定を覆う
+      'data-grab': key, 'data-dir': dir.join(','),
+    }));
   };
+  const nGrab = []; // 垂直応力の当たり判定はせん断より前面に置く（交わるところでは垂直応力を優先）
   {
     const L = len(s.sx);
-    if (!zero(s.sx)) {
-      for (const sg of [1, -1]) {
-        const a = cx + sg * (h + gap);
-        const b = cx + sg * (h + gap + L);
+    for (const sg of [1, -1]) {
+      const a = cx + sg * (h + gap);
+      const b = cx + sg * (h + gap + L);
+      if (!zero(s.sx)) {
         if (s.sx > 0) arrow(ga, a, cy, b, cy, C_SX);
         else arrow(ga, b, cy, a, cy, C_SX);
       }
-      // 短い矢印でもラベルが +x 面のせん断の矢印・持ち手に被らないよう、中心を面から 46 以上離す
-      label(ga, cx + h + gap + Math.max(L / 2, 46), cy + F(20), `σx = ${fmt(s.sx)}`, C_SX, 'middle', F(12));
+      nGrab.push(['sx', [sg, 0], cx + sg * (h + gap + 3), cy, cx + sg * (h + gap + Math.max(L, 30)), cy]);
     }
-    if (opts.editable) handle('sx', cx + h + gap + L, cy, C_SX);
+    // 短い矢印でもラベルが +x 面のせん断の矢印に被らないよう、中心を面から 46 以上離す
+    if (!zero(s.sx)) label(ga, cx + h + gap + Math.max(L / 2, 46), cy + F(20), `σx = ${fmt(s.sx)}`, C_SX, 'middle', F(12));
   }
   {
     const L = len(s.sy);
-    if (!zero(s.sy)) {
-      for (const sg of [1, -1]) {
-        const a = cy - sg * (h + gap);
-        const b = cy - sg * (h + gap + L);
+    for (const sg of [1, -1]) {
+      const a = cy - sg * (h + gap);
+      const b = cy - sg * (h + gap + L);
+      if (!zero(s.sy)) {
         if (s.sy > 0) arrow(ga, cx, a, cx, b, C_SY);
         else arrow(ga, cx, b, cx, a, C_SY);
       }
-      label(ga, cx + 12, cy - h - gap - L / 2 + 4, `σy = ${fmt(s.sy)}`, C_SY, 'start', F(12));
+      nGrab.push(['sy', [0, -sg], cx, cy - sg * (h + gap + 3), cx, cy - sg * (h + gap + Math.max(L, 30))]);
     }
-    if (opts.editable) handle('sy', cx, cy - h - gap - L, C_SY);
+    if (!zero(s.sy)) label(ga, cx + 12, cy - h - gap - Math.max(L / 2, 10) + 4, `σy = ${fmt(s.sy)}`, C_SY, 'start', F(12));
   }
   {
     // +x 面で +y 向き、+y 面で +x 向きが正。反対の面は逆向き
@@ -196,8 +216,13 @@ export function renderPlate(host, s, e, phi, opts = {}) {
       arrow(ga, cx + sg * L, cy + h + d, cx - sg * L, cy + h + d, C_T, 1.8, 6);
       label(ga, cx + h + 14, cy - h - 8, `τxy = ${fmt(s.txy)}`, C_T, 'start', F(12));
     }
-    if (opts.editable) handle('txy', cx + h + d, cy - sg * L, C_T);
+    const Lh = Math.max(L, 22);
+    hit('txy', [0, -1], cx + h + d, cy - Lh, cx + h + d, cy + Lh); // +x 面: 上へ動かすと増える
+    hit('txy', [0, 1], cx - h - d, cy - Lh, cx - h - d, cy + Lh); // −x 面: 下へ
+    hit('txy', [1, 0], cx - Lh, cy - h - d, cx + Lh, cy - h - d); // +y 面: 右へ
+    hit('txy', [-1, 0], cx - Lh, cy + h + d, cx + Lh, cy + h + d); // −y 面: 左へ
   }
+  for (const g of nGrab) hit(...g);
   svg.appendChild(ga);
   label(svg, W - 8, 16, '[MPa]', MUTED, 'end', F(10.5));
 
@@ -276,7 +301,8 @@ export function renderPlate(host, s, e, phi, opts = {}) {
 }
 
 // 矢印の長さの係数（app.js のドラッグが逆算に使う）
-export const NLEN0 = 16; // 垂直応力の矢印の最小の長さ
-export const NLEN = 44; // ref のときに足す長さ
-export const TLEN0 = 13; // せん断の矢印（半分）の最小の長さ
-export const TLEN = 35;
+// 変形の誇張の倍率（枠からはみ出すときだけ下げる）
+const MAG = 500;
+export const NLEN = 60; // 垂直応力の矢印の長さ（応力が ref のとき）
+export const NMAX = 100; // 垂直応力の矢印の長さの上限（図からはみ出さないように）
+export const TLEN = 48; // せん断の矢印の半分の長さ（応力が ref のとき。上限は板の半辺 − 8）

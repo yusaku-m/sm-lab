@@ -4,7 +4,7 @@
 
 import { RodScene } from './rod3d.js';
 import { VesselScene } from './vessel3d.js';
-import { renderPlate, NLEN0, NLEN, TLEN0, TLEN } from './plate2d.js';
+import { renderPlate, NLEN, TLEN } from './plate2d.js';
 import {
   renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames, setOutOfPlaneAxis,
 } from './mohr2d.js';
@@ -677,7 +677,7 @@ function wrap90(deg) {
 }
 
 // --- 微小平板の図のドラッグ
-//   応力の矢印の持ち手（[data-grab]、応力が既知のときだけある）… その応力を変える
+//   応力の矢印（[data-grab]、応力が既知のときだけ当たり判定がある）… その応力を変える
 //   板の中 … 紫のゲージ（ロゼットを隠したときは X–Y 軸）を回す＝ φ を変える
 $('plate-view').addEventListener('pointerdown', (ev) => {
   if (!plateDrag || (ev.pointerType === 'touch' && isCompact())) return;
@@ -690,7 +690,7 @@ $('plate-view').addEventListener('pointerdown', (ev) => {
   const grab = ev.target.closest && ev.target.closest('[data-grab]');
   let move;
   if (grab && state.plate.mode === 's') {
-    move = stressDragger(grab.dataset.grab, toUser);
+    move = stressDragger(grab.dataset.grab, grab.dataset.dir.split(',').map(Number), q, toUser);
   } else {
     const d = Math.hypot(q.x - plateDrag.cx, q.y - plateDrag.cy);
     if (d < 8 || d > 110) return; // 板の外（応力の矢印のあたり）は対象外
@@ -744,38 +744,25 @@ function phiDragger(q0) {
 }
 
 /**
- * 応力の矢印の端を掴んで応力を変える（plate2d.js の矢印の長さ len()/tlen() の逆算）。
- *   σx・σy … 面から外へ引いた距離が大きさ。板の中まで押し込むと向きが反転し、もう一度外へ引くと反対向きに伸びる
- *   τxy   … +x 面の矢印の先端を上下に。中心より上なら正、下なら負
+ * 応力の矢印を掴んで応力を変える。どの矢印（両側の面・せん断の 4 本）を掴んでもよい。
+ * 掴んだ点からの移動量だけ足す方式で、掴んだ矢印の data-dir（その向きに動かすと値が増える向き）への成分を
+ * 応力に直す（plate2d.js の矢印の長さ len()/tlen() の逆）。
+ *   σx・σy … 面から外へ引けば引張側へ、板へ押し込めば圧縮側へ。矢印は 0 まで縮んでから反対向きに伸びる
+ *   τxy   … 面に沿って動かす（+x 面なら上、+y 面なら右が正）
  * ドラッグ中は矢印の縮尺（ref）を固定する（掴んだ矢印が指の下から逃げないように）。
  */
-function stressDragger(key, toUser) {
+function stressDragger(key, dir, q0, toUser) {
   const g = plateDrag;
   plateRef = g.ref;
   const S = state.plate.s;
-  let sign = S[key] < 0 ? -1 : 1;
-  let inside = false;
+  const v0 = S[key];
+  const k = g.ref / (key === 'txy' ? TLEN : NLEN); // 1 px あたりの応力 [MPa]
   const lim = P_RANGES.s;
-  const clampS = (v) => Math.round(Math.min(lim, Math.max(-lim, v)));
   return (e) => {
     const t = toUser(e);
-    if (key === 'txy') {
-      const u = Math.max(-(g.h - 8), Math.min(g.h - 8, g.cy - t.y));
-      S.txy = clampS(Math.sign(u) * (Math.max(0, Math.abs(u) - TLEN0) * g.ref) / TLEN);
-    } else {
-      // 面から外向きの距離
-      const d = key === 'sx' ? t.x - (g.cx + g.h) : g.cy - g.h - t.y;
-      if (d < 0) {
-        if (!inside) sign = -sign; // 板の中へ入った瞬間に 1 回だけ反転
-        inside = true;
-        S[key] = 0;
-      } else {
-        inside = false;
-        // 矢印は長くても 1.9 ref ぶんまで（それ以上は離せば縮尺が測り直されるので、もう一度引く）
-        const mag = Math.min(1.9 * g.ref, (Math.max(0, d - g.gap - NLEN0) * g.ref) / NLEN);
-        S[key] = clampS(sign * mag);
-      }
-    }
+    const d = (t.x - q0.x) * dir[0] + (t.y - q0.y) * dir[1];
+    // 0.5 MPa 刻み（1 MPa だと小さな ref のとき矢印の伸び縮みがカクつく）
+    S[key] = Math.round(Math.min(lim, Math.max(-lim, v0 + d * k)) * 2) / 2;
     update();
   };
 }
