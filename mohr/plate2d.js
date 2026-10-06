@@ -224,15 +224,12 @@ export function renderPlate(host, s, e, phi, opts = {}) {
 
     // --- 回転ゲージ（φ の向き）。φ = 0 では εx のゲージにぴったり重なるので出さず、回したときだけ出す
     // （2026-10-06、ユーザーの指示）。ロゼットと同じ側に描くので、φ = 45°・90° では εp・εy のゲージに重なり、
-    // 「重なった＝そのゲージと同じ読み」が見て分かる。ゲージは向きの無い線なので向きは (−90°, 90°] に畳む
-    // （φ = −90° も εy に重なるように。0° のまわりは畳まないので、0 をまたいでも跳ばない）。
+    // 「重なった＝そのゲージと同じ読み」が見て分かる。向きは φ そのまま（ロゼットを隠したときの X 軸と同じ）。
+    // 以前は (−90°, 90°] に畳んでいたが、φ が ±90° を越えたところでゲージが反対側へ跳んで見えた（2026-10-06）。
     if (opts.showRot && Math.abs(phi) > 1e-4) {
       const rg = el('g', {});
-      let deg = (phi * 180) / Math.PI;
-      while (deg > 90) deg -= 180;
-      while (deg <= -90) deg += 180;
-      const a = (deg * Math.PI) / 180;
-      const u = [Math.cos(a), -Math.sin(a)];
+      const deg = (phi * 180) / Math.PI;
+      const u = [Math.cos(phi), -Math.sin(phi)];
       rg.appendChild(
         el('line', {
           x1: cx - u[0] * (h + 4), y1: cy - u[1] * (h + 4), x2: cx + u[0] * (h + 4), y2: cy + u[1] * (h + 4),

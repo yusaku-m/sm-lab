@@ -716,7 +716,7 @@ $('plate-view').addEventListener('pointerdown', (ev) => {
 
 /**
  * φ を回す。掴んだ点からの回転量だけ足す（ゲージ・X 軸・Y 軸のどこを掴んでも跳ばない）。
- * ゲージ・軸は向きの無い線として扱い、φ は応力円の直径のドラッグと同じく ±90° に畳む。
+ * φ はスライダーと同じ ±180° の範囲で連続に動かす（±180° でだけ畳む）。
  */
 function phiDragger(q0) {
   if (state.plane !== 'xy') {
@@ -736,7 +736,10 @@ function phiDragger(q0) {
     while (da < -Math.PI) da += 2 * Math.PI;
     prev = a;
     deg += (da * 180) / Math.PI;
-    setPhi(wrap90(deg));
+    // ±180° でだけ畳む（ゲージ・X 軸を連続に回せるように。±90° で畳むと 90° を越えた瞬間に反対側へ跳ぶ）
+    while (deg > 180) deg -= 360;
+    while (deg < -180) deg += 360;
+    setPhi(deg);
   };
 }
 
