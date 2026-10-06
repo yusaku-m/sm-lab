@@ -308,7 +308,7 @@ const P_STRAIN_SPEC = [
 // G を動かすときはポアソン比を固定して E を追随させる（E = 2G(1+ν)）。E を動かせば G が追随する
 const P_MAT_SPEC = [
   { key: 'E', tex: 'E', name: '縦弾性係数', unit: 'GPa', min: P_RANGES.E[0], max: P_RANGES.E[1], step: 1 },
-  { key: 'G', tex: 'G', name: '横弾性係数（ν 固定で E が追随）', unit: 'GPa', min: 0.5, max: 120, step: 0.5 },
+  { key: 'G', tex: 'G', name: '横弾性係数', unit: 'GPa', min: 0.5, max: 120, step: 0.5 },
   { key: 'nu', tex: '\\nu', name: 'ポアソン比', unit: '-', min: P_RANGES.nu[0], max: P_RANGES.nu[1], step: 0.01 },
 ];
 // Grading の packages/quiz/Material.py と同じ値
