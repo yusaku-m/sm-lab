@@ -17,6 +17,21 @@ export const PLANES = [
 // 元の y–r・r–x 面のままだと、ねじりのように τxy があるとき 3 つの円が主応力の円にならないため。
 // キー（URL の c=yr / rx も）は以前のまま。
 
+/**
+ * 3 本目の主方向（面に垂直な向き）の名前を差し替える。丸棒・薄肉容器は半径方向 r、
+ * 微小平板は板厚方向 z。キー（yr / rx、URL の c=）は変えない。
+ */
+export function setOutOfPlaneAxis(n) {
+  const yr = PLANES[1];
+  const rx = PLANES[2];
+  yr.bn = n;
+  yr.label = `y′–${n} 面`;
+  yr.short = `y′–${n}`;
+  rx.an = n;
+  rx.label = `${n}–x′ 面`;
+  rx.short = `${n}–x′`;
+}
+
 export function planeByKey(key) {
   return PLANES.find((p) => p.key === key) || PLANES[0];
 }

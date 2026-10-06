@@ -65,6 +65,49 @@ export function vesselStress(kind, v) {
     : { sx: s / 2, sy: s, sr: 0, txy: 0 };
 }
 
+// ---------------------------------------------------------------- 微小平板（平面応力のフックの法則）
+// 講義資料「03 平面応力状態におけるフックの法則」・演習（Grading の 4ME 後期 week3.py）と同じ式。
+// 単位: 応力 [MPa]、ひずみ [×10⁻⁶]、E [GPa]、ν [-]。板厚方向 z は σz = τyz = τzx = 0。
+//   εx = (σx − νσy)/E,  εy = (σy − νσx)/E,  γxy = τxy/G,  G = E/{2(1+ν)}
+//   σx = E(εx + νεy)/(1−ν²),  σy = E(εy + νεx)/(1−ν²),  τxy = Gγxy
+//   0°・45°・90° ロゼット: γxy = 2εp − (εx + εy)
+
+/** 横弾性係数 G [GPa]。m = {E [GPa], nu}。 */
+export function shearModulus(m) {
+  return m.E / (2 * (1 + m.nu));
+}
+
+/** 応力 {sx, sy, txy} [MPa] → ひずみ {ex, ey, gxy} [×10⁻⁶]。 */
+export function strainFromStress(s, m) {
+  const E = m.E * 1000; // MPa
+  const G = shearModulus(m) * 1000;
+  return {
+    ex: ((s.sx - m.nu * s.sy) / E) * 1e6,
+    ey: ((s.sy - m.nu * s.sx) / E) * 1e6,
+    gxy: (s.txy / G) * 1e6,
+  };
+}
+
+/** ひずみ {ex, ey, gxy} [×10⁻⁶] → 応力 {sx, sy, txy} [MPa]。 */
+export function stressFromStrain(e, m) {
+  const k = (m.E * 1000) / (1 - m.nu * m.nu) * 1e-6;
+  return {
+    sx: k * (e.ex + m.nu * e.ey),
+    sy: k * (e.ey + m.nu * e.ex),
+    txy: shearModulus(m) * 1000 * e.gxy * 1e-6,
+  };
+}
+
+/** x 軸から φ [rad]（反時計まわり）の向きの垂直ひずみ（その向きに貼ったゲージの読み）[×10⁻⁶]。 */
+export function strainAlong(e, phi) {
+  return (e.ex + e.ey) / 2 + ((e.ex - e.ey) / 2) * Math.cos(2 * phi) + (e.gxy / 2) * Math.sin(2 * phi);
+}
+
+/** 板厚方向のひずみ εz = −ν(σx + σy)/E [×10⁻⁶]。 */
+export function thicknessStrain(s, m) {
+  return ((-m.nu * (s.sx + s.sy)) / (m.E * 1000)) * 1e6;
+}
+
 /**
  * 応力成分 {sx, sy, sr, txy} から主応力などを求める。
  * τyr = τrx = 0 なので r 方向はそのまま主方向であり、

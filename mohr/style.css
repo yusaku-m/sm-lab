@@ -465,6 +465,50 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   color: var(--muted);
 }
 
+/* ---------- 微小平板 ---------- */
+.plate-view {
+  border-radius: 14px;
+  background: linear-gradient(160deg, #fbf8f1 0%, #efe9dc 100%);
+  border: 1px solid var(--line);
+  cursor: grab;
+}
+.plate-view.grabbing { cursor: grabbing; }
+@media (min-width: 761px) {
+  .plate-view { touch-action: none; }
+}
+.plate-view svg { max-height: clamp(300px, 40vh, 440px); }
+/* 応力を与える／ひずみを与えるのトグル */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line-solid);
+  border-radius: 999px;
+  background: #fffefa;
+}
+.seg-btn {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.seg-btn[aria-pressed="true"] {
+  background: #fdf0ea;
+  color: var(--accent-strong);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+.group-cap { font-size: 0.8rem; font-weight: 600; margin: 0 0 10px; }
+.derived-note { display: none; font-weight: 400; color: var(--muted); }
+.pgroup.derived .derived-note { display: inline; }
+.pgroup.derived .field-row { opacity: 0.6; }
+.field-inputs input:disabled { cursor: not-allowed; }
+
 .err {
   color: var(--accent-strong);
   font-size: 0.8rem;
@@ -547,6 +591,10 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   .colorbar .ticks { font-size: 0.64rem; margin-top: 3px; }
   .viewport .hint { font-size: 0.62rem; padding: 4px 7px; left: 8px; top: 7px; bottom: auto; }
   .viewport .hint .hint-more { display: none; }
+
+  .plate-view { margin-top: 7px; }
+  .plate-view svg { max-height: 24vh; max-height: 24svh; }
+  #plate-actions { margin: 6px 0 0; }
 
   .probe { margin-top: 7px; padding: 5px 9px; font-size: 0.71rem; line-height: 1.4; white-space: nowrap; overflow-x: auto; }
   .probe .note { display: none; }

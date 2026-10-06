@@ -4,24 +4,38 @@
 
 import { RodScene } from './rod3d.js';
 import { VesselScene } from './vessel3d.js';
+import { renderPlate } from './plate2d.js';
 import {
-  renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames,
+  renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames, setOutOfPlaneAxis,
 } from './mohr2d.js';
 import {
   FIELDS, fieldByKey, sectionProps, stressAt, analyze, rotated,
   principalAngle, gradientCss, fmt, vesselStress,
+  shearModulus, strainFromStress, stressFromStrain, strainAlong, thicknessStrain,
 } from './stress.js';
 
 const RANGES = { N: 120, M: 600, T: 600 };
 // 薄肉容器の入力範囲。p [MPa]（負は外圧）、r = 内半径 [mm]、t = 肉厚 [mm]
 const V_RANGES = { p: [-20, 20], r: [20, 3000], t: [0.5, 100] };
-const MODELS = ['rod', 'sph', 'cyl'];
-const isVessel = () => state.model !== 'rod';
+// 微小平板の入力範囲。応力 [MPa]、ひずみ [×10⁻⁶]、E [GPa]
+const P_RANGES = { s: 300, e: 2000, g: 4000, E: [1, 300], nu: [0, 0.49] };
+const MODELS = ['rod', 'sph', 'cyl', 'plate'];
+const isVessel = () => state.model === 'sph' || state.model === 'cyl';
+const isPlate = () => state.model === 'plate';
+/** data-model 属性の値（rod / vessel / plate）。 */
+const modelGroup = () => (isPlate() ? 'plate' : isVessel() ? 'vessel' : 'rod');
 
 const state = {
   // 左上のパネルに出す対象。'rod' = 丸棒、'sph' = 薄肉球殻、'cyl' = 薄肉円筒殻
   model: 'rod',
   vessel: { p: 2, r: 500, t: 10 },
+  // 微小平板。mode = 's'（応力を与える）/ 'e'（ひずみを与える）。与えていない側は plateSync() で計算する
+  plate: {
+    mode: 'e',
+    s: { sx: 0, sy: 0, txy: 0 },
+    e: { ex: 400, ey: -100, gxy: 400 }, // εp = 350（演習のロゼットの読みの形）
+    mat: { E: 206, nu: 0.3 }, // 軟鋼（Grading の Material.Steel）
+  },
   // URL から渡された薄肉容器の探触点（URL の単位のまま。シーン生成後に流し込む）
   vprobe: null,
   loads: { N: 40, M: 260, T: 300 },
@@ -51,7 +65,16 @@ const PLANE_KEYS = PLANES.map((p) => p.key);
 //              球殻は vu = 緯度 [deg]・vv = 経度 [deg]。
 function buildHash() {
   const q = new URLSearchParams();
-  if (isVessel()) {
+  if (isPlate()) {
+    // 微小平板: k=plate、pm=s|e（与える量）、与えている側の 3 成分（ps=σx,σy,τxy または pe=εx,εy,γxy）、pE/pn
+    const P = state.plate;
+    q.set('k', 'plate');
+    q.set('pm', P.mode);
+    if (P.mode === 's') q.set('ps', [P.s.sx, P.s.sy, P.s.txy].map((v) => round(v, 1)).join(','));
+    else q.set('pe', [P.e.ex, P.e.ey, P.e.gxy].map((v) => round(v, 0)).join(','));
+    q.set('pE', String(round(P.mat.E, 1)));
+    q.set('pn', String(round(P.mat.nu, 3)));
+  } else if (isVessel()) {
     q.set('k', state.model);
     q.set('vp', String(round(state.vessel.p, 2)));
     q.set('vr', String(round(state.vessel.r, 1)));
@@ -73,7 +96,7 @@ function buildHash() {
   q.set('p', PLANE_KEYS.filter((k) => state.planes[k]).join('.') || '-');
   q.set('q', String(round(state.phi, 1)));
   if (state.plane !== 'xy') q.set('c', state.plane); // 選んでいる円（既定の x–y 面なら書かない）
-  if (!isVessel()) {
+  if (state.model === 'rod') {
     const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
     const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
     q.set('pr', String(round(pr, 1)));
@@ -127,6 +150,18 @@ function applyHash(hash) {
   state.vprobe = Number.isFinite(vu) && Number.isFinite(vv)
     ? { u: Math.min(uMax, Math.max(-uMax, vu)), v: vv }
     : null;
+  const P = state.plate;
+  P.mode = q.get('pm') === 's' ? 's' : 'e';
+  const triple = (key, lim) => {
+    const v = (q.get(key) || '').split(',').map(parseFloat);
+    return v.length === 3 && v.every(Number.isFinite) ? v.map((x) => Math.min(lim, Math.max(-lim, x))) : null;
+  };
+  const ps = triple('ps', P_RANGES.s);
+  if (ps) P.s = { sx: ps[0], sy: ps[1], txy: ps[2] };
+  const pe = triple('pe', P_RANGES.g);
+  if (pe) P.e = { ex: pe[0], ey: pe[1], gxy: pe[2] };
+  P.mat.E = num('pE', P_RANGES.E[0], P_RANGES.E[1], P.mat.E);
+  P.mat.nu = num('pn', P_RANGES.nu[0], P_RANGES.nu[1], P.mat.nu);
   state.loads.N = num('n', -RANGES.N, RANGES.N, state.loads.N);
   state.loads.M = num('m', -RANGES.M, RANGES.M, state.loads.M);
   state.loads.T = num('t', -RANGES.T, RANGES.T, state.loads.T);
@@ -253,11 +288,118 @@ for (const spec of VESSEL_SPEC) {
   $('vessel-fields').appendChild(r.el);
 }
 
+// --- 微小平板
+const P_STRESS_SPEC = [
+  { key: 'sx', tex: '\\sigma_x', name: '垂直応力', unit: 'MPa', min: -P_RANGES.s, max: P_RANGES.s, step: 1 },
+  { key: 'sy', tex: '\\sigma_y', name: '垂直応力', unit: 'MPa', min: -P_RANGES.s, max: P_RANGES.s, step: 1 },
+  { key: 'txy', tex: '\\tau_{xy}', name: 'せん断応力', unit: 'MPa', min: -P_RANGES.s, max: P_RANGES.s, step: 1 },
+];
+const MU = '×10⁻⁶';
+const P_STRAIN_SPEC = [
+  { key: 'ex', tex: '\\varepsilon_x', name: '0° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
+  { key: 'ep', tex: '\\varepsilon_p', name: '45° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
+  { key: 'ey', tex: '\\varepsilon_y', name: '90° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
+  { key: 'gxy', tex: '\\gamma_{xy}', name: 'せん断ひずみ（= 2εp − (εx + εy)）', unit: MU, min: -P_RANGES.g, max: P_RANGES.g, step: 10 },
+];
+const P_MAT_SPEC = [
+  { key: 'E', tex: 'E', name: '縦弾性係数', unit: 'GPa', min: P_RANGES.E[0], max: P_RANGES.E[1], step: 1 },
+  { key: 'nu', tex: '\\nu', name: 'ポアソン比', unit: '-', min: P_RANGES.nu[0], max: P_RANGES.nu[1], step: 0.01 },
+];
+// Grading の packages/quiz/Material.py と同じ値
+const MATERIALS = [
+  { name: '軟鋼', E: 206, nu: 0.3 },
+  { name: '鋳鉄', E: 98, nu: 0.3 },
+  { name: 'アルミ', E: 69, nu: 0.33 },
+  { name: '銅', E: 126, nu: 0.33 },
+  { name: 'コンクリート', E: 20, nu: 0.2 },
+];
+
+/** 与えていない側を、与えている側からフックの法則で計算し直す。 */
+function plateSync() {
+  const P = state.plate;
+  if (P.mode === 's') P.e = strainFromStress(P.s, P.mat);
+  else P.s = stressFromStrain(P.e, P.mat);
+}
+
+const ep45 = () => (state.plate.e.ex + state.plate.e.ey + state.plate.e.gxy) / 2;
+
+for (const spec of P_STRESS_SPEC) {
+  const r = makeRow(spec, () => state.plate.s[spec.key], (v) => { state.plate.s[spec.key] = v; });
+  rows.push(r);
+  $('plate-stress-fields').appendChild(r.el);
+}
+for (const spec of P_STRAIN_SPEC) {
+  const clampG = (v) => Math.min(P_RANGES.g, Math.max(-P_RANGES.g, v));
+  // εp を動かしたときは εx・εy をそのままに γxy を決め直す（εx・εy を動かしたときは γxy を保つ）
+  const r = spec.key === 'ep'
+    ? makeRow(spec, ep45, (v) => { const e = state.plate.e; e.gxy = clampG(2 * v - (e.ex + e.ey)); })
+    : makeRow(spec, () => state.plate.e[spec.key], (v) => { state.plate.e[spec.key] = v; });
+  rows.push(r);
+  $('plate-strain-fields').appendChild(r.el);
+}
+for (const spec of P_MAT_SPEC) {
+  const r = makeRow(spec, () => state.plate.mat[spec.key], (v) => { state.plate.mat[spec.key] = v; });
+  rows.push(r);
+  $('plate-mat-fields').appendChild(r.el);
+}
+
+$('plate-mat').replaceChildren(
+  ...MATERIALS.map((m, i) => new Option(`${m.name}（E = ${m.E} GPa, ν = ${m.nu}）`, String(i))),
+  new Option('任意（下の値）', 'custom')
+);
+$('plate-mat').addEventListener('change', () => {
+  const m = MATERIALS[Number($('plate-mat').value)];
+  if (m) state.plate.mat = { E: m.E, nu: m.nu };
+  update();
+});
+
+for (const b of document.querySelectorAll('[data-pmode]')) {
+  b.addEventListener('click', () => {
+    state.plate.mode = b.dataset.pmode;
+    update();
+  });
+}
+
+/** 与える側のトグル・入力欄の有効/無効・材料のセレクトを状態に合わせる。 */
+function syncPlateUI() {
+  const P = state.plate;
+  for (const b of document.querySelectorAll('[data-pmode]')) {
+    b.setAttribute('aria-pressed', b.dataset.pmode === P.mode ? 'true' : 'false');
+  }
+  for (const [id, on] of [['plate-stress-group', P.mode === 's'], ['plate-strain-group', P.mode === 'e']]) {
+    const g = $(id);
+    g.classList.toggle('derived', !on);
+    for (const inp of g.querySelectorAll('input')) inp.disabled = !on;
+  }
+  const i = MATERIALS.findIndex((m) => Math.abs(m.E - P.mat.E) < 1e-9 && Math.abs(m.nu - P.mat.nu) < 1e-9);
+  $('plate-mat').value = i >= 0 ? String(i) : 'custom';
+}
+
+// 典型的な応力状態。与えているのがひずみでも、応力で決めてからひずみに直す
+const PLATE_PRESETS = [
+  { label: '単軸引張', short: '単軸', s: { sx: 100, sy: 0, txy: 0 } },
+  { label: '等二軸引張', short: '等二軸', s: { sx: 100, sy: 100, txy: 0 } },
+  { label: '純せん断', short: 'せん断', s: { sx: 0, sy: 0, txy: 80 } },
+];
+for (const pr of PLATE_PRESETS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn';
+  b.innerHTML = `<span class="long">${pr.label}</span><span class="short">${pr.short}</span>`;
+  b.addEventListener('click', () => {
+    state.plate.s = { ...pr.s };
+    state.plate.e = strainFromStress(state.plate.s, state.plate.mat);
+    update();
+  });
+  $('plate-actions').appendChild(b);
+}
+
 // ---------------------------------------------------------------- コンター選択
 
 // σx・σy の呼び名は対象ごとに変える（円筒殻は x = z、球殻は x = φ。講義資料の表記）
 const FIELD_LABELS = {
   rod: {},
+  plate: {},
   cyl: { sx: 'σx  軸方向（z）の垂直応力', sy: 'σy  周方向（θ）の垂直応力' },
   sph: { sx: 'σx  経線方向（φ）の垂直応力', sy: 'σy  周方向（θ）の垂直応力' },
 };
@@ -518,6 +660,42 @@ function wrap90(deg) {
   return d;
 }
 
+// --- 微小平板の紫のゲージ（φ の向き）を掴んで回す。ゲージは向きの無い線なので φ は ±90° に畳む。
+// 中心の反対側（φ+180°）に描いているが、どちら側を掴んでも同じ向きになる。
+$('plate-view').addEventListener('pointerdown', (ev) => {
+  if (!plateDrag || (ev.pointerType === 'touch' && isCompact())) return;
+  const svg = $('plate-view').querySelector('svg');
+  const m = svg && svg.getScreenCTM();
+  if (!m) return;
+  const toUser = (e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+  const q = toUser(ev);
+  const d = Math.hypot(q.x - plateDrag.cx, q.y - plateDrag.cy);
+  if (d < 8 || d > 110) return; // 板の外（応力の矢印のあたり）は対象外
+  ev.preventDefault();
+  if (state.plane !== 'xy') {
+    // φ は x–y 面で測る（他の面を選んでいたら x–y 面に戻す）
+    state.plane = 'xy';
+    state.planes.xy = true;
+    planeInputs.xy.checked = true;
+  }
+  $('plate-view').classList.add('grabbing');
+  const toPhi = (e) => {
+    const t = toUser(e);
+    const a = Math.atan2(-(t.y - plateDrag.cy), t.x - plateDrag.cx);
+    setPhi(wrap90((a * 180) / Math.PI - 180));
+  };
+  toPhi(ev);
+  const up = () => {
+    $('plate-view').classList.remove('grabbing');
+    window.removeEventListener('pointermove', toPhi);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+  };
+  window.addEventListener('pointermove', toPhi);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+});
+
 // ---------------------------------------------------------------- 対象の切り替え
 
 const VESSEL_SUB = (xName) =>
@@ -528,6 +706,9 @@ const VESSEL_SUB = (xName) =>
   '<span class="tex" data-tex="r"></span> = 半径方向。';
 
 const MODEL_TEXT = {
+  plate: {
+    table: { sx: 'σx', sy: 'σy' },
+  },
   rod: {
     table: { sx: 'σx 軸方向', sy: 'σy 周方向' },
   },
@@ -559,10 +740,20 @@ function setModel(model, opts = {}) {
   state.model = model;
   $('model').value = model;
   const vesselOn = isVessel();
+  const plateOn = isPlate();
+  const group = modelGroup();
   for (const el of document.querySelectorAll('[data-model]')) {
-    el.hidden = el.dataset.model !== (vesselOn ? 'vessel' : 'rod');
+    el.hidden = !el.dataset.model.split(' ').includes(group);
   }
-  if (opts.fromUser && vesselOn) {
+  $('model-suffix').textContent = plateOn ? 'の応力状態' : 'の応力分布';
+  // 3 本目の主方向は、微小平板では板厚方向 z、それ以外は半径方向 r
+  setOutOfPlaneAxis(plateOn ? 'z' : 'r');
+  for (const p of PLANES) {
+    const lab = planeInputs[p.key].parentElement;
+    lab.querySelector('.long').textContent = p.label;
+    lab.querySelector('.short').textContent = `${p.short} 面`;
+  }
+  if (opts.fromUser && (vesselOn || plateOn)) {
     for (const k of PLANE_KEYS) {
       state.planes[k] = true;
       planeInputs[k].checked = true;
@@ -575,7 +766,7 @@ function setModel(model, opts = {}) {
   }
   renderFieldOptions();
   renderModelFormulas();
-  if (rod) rod.setActive(!vesselOn);
+  if (rod) rod.setActive(group === 'rod');
   if (vessel) {
     if (vesselOn) vessel.set({ kind: model, vessel: state.vessel, field: state.field });
     vessel.setActive(vesselOn);
@@ -601,6 +792,8 @@ let mohrDrag = null;
 let mohrHit = [];
 // 薄肉容器の 3D シーン（丸棒の生成中に update() から参照されるので、ここで先に宣言する）
 let vessel = null;
+// 直前に描いた微小平板の図の中心（回転ゲージを掴んで回すのに使う）
+let plateDrag = null;
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -711,7 +904,10 @@ function currentProbe() {
 
 function currentComps() {
   let c;
-  if (isVessel()) {
+  if (isPlate()) {
+    const s = state.plate.s;
+    c = { sx: s.sx, sy: s.sy, sr: 0, txy: s.txy }; // sr は板厚方向 σz（平面応力なので 0）
+  } else if (isVessel()) {
     c = vesselStress(state.model, state.vessel);
   } else {
     const sec = sectionProps(state.geom.d);
@@ -727,8 +923,10 @@ function update(opts = {}) {
   updating = true;
   try {
     const vesselOn = isVessel();
+    const plateOn = isPlate();
+    plateSync();
     if (!opts.fromScene && !opts.skipRod) {
-      if (rod && !vesselOn) {
+      if (rod && state.model === 'rod') {
         rod.set({
           geom: state.geom,
           loads: state.loads,
@@ -746,7 +944,7 @@ function update(opts = {}) {
     const an = analyze(comps);
     const phi = (state.phi * Math.PI) / 180;
     // 3D図の頂点は動かさず、探触点の回した軸だけ更新（重くない）
-    const scene = vesselOn ? vessel : rod;
+    const scene = plateOn ? null : vesselOn ? vessel : rod;
     if (scene) scene.setPhi(phi, state.plane, principalAngle(comps));
 
     const drawn = renderCircles($('mohr-plot'), comps, an, state.planes, phi, {
@@ -764,12 +962,21 @@ function update(opts = {}) {
       plane: state.plane,
     });
     renderTable(comps, an, phi);
-    renderColorbar();
-    if (vesselOn) {
+    if (plateOn) {
+      syncPlateUI();
+      plateDrag = renderPlate($('plate-view'), state.plate.s, state.plate.e, phi, {
+        showRot: state.plane === 'xy',
+        fontScale: isCompact() ? 1.5 : 1,
+      });
+      renderPlateProbe(phi);
+      renderPlateCurrent();
+    } else if (vesselOn) {
+      renderColorbar();
       renderVesselProbe();
       renderVesselCurrent(comps, an);
       renderVesselWarn();
     } else {
+      renderColorbar();
       renderProbe(p, sec);
       renderCurrent(sec, p, comps);
     }
@@ -969,7 +1176,7 @@ function renderTable(comps, an, phi) {
   $('stress-table').innerHTML =
     row(names.sx, comps.sx) +
     row(names.sy, comps.sy) +
-    row('σr 半径方向', comps.sr) +
+    row(isPlate() ? 'σz 板厚方向' : 'σr 半径方向', comps.sr) +
     row('τxy せん断', comps.txy) +
     `<tr><th colspan="2" style="padding-top:10px"></th></tr>` +
     row('σ₁ 最大主応力', an.s1) +
@@ -1005,6 +1212,71 @@ function renderVesselWarn() {
       `r / t = ${ratio.toFixed(1)} と肉厚が厚く、薄肉の仮定（r ≫ t、目安は r / t ≥ 10）が成り立ちにくい範囲です。` +
       '値は薄肉の式のまま出しています。';
   }
+}
+
+/**
+ * ひずみ [×10⁻⁶] の表示（3 桁以上は整数、それ未満は小数 1 桁）。
+ * RodScene の生成中に update() から呼ばれるので、const ではなく関数宣言にしておく（巻き上げのため）。
+ */
+function mu(v) {
+  return Math.abs(v) < 0.05 ? '0' : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1);
+}
+
+function renderPlateProbe(phi) {
+  const { e, s, mat } = state.plate;
+  const val = (v) => `<span class="val">${mu(v)}</span>`;
+  const ez = thicknessStrain(s, mat);
+  const rot = state.plane === 'xy'
+    ? `　／ ε<sub>X</sub>（φ = ${state.phi.toFixed(0)}°） = ${val(strainAlong(e, phi))}`
+    : '';
+  if (isCompact()) {
+    $('probe').innerHTML =
+      `<b>ゲージ</b> εx ${val(e.ex)}　εp ${val(ep45())}　εy ${val(e.ey)}　γxy ${val(e.gxy)}` +
+      (rot ? `　εX ${val(strainAlong(e, phi))}` : '') + `　[×10⁻⁶]`;
+    return;
+  }
+  $('probe').innerHTML =
+    `<b>ゲージの読み</b>　εx = ${val(e.ex)} ／ εp（45°） = ${val(ep45())} ／ εy = ${val(e.ey)}` +
+    `　→　γxy = 2εp − (εx + εy) = ${val(e.gxy)}${rot}` +
+    `　／ 板厚方向 εz = ${val(ez)}　<span class="note" style="opacity:.75">[×10⁻⁶]</span>`;
+}
+
+/** 微小平板の「現在の値」。与えている側から、もう一方を計算する式を数値入りで書く。 */
+function renderPlateCurrent() {
+  const { e, s, mat, mode } = state.plate;
+  const G = shearModulus(mat);
+  const r = (v, d = 3) => String(round(v, d));
+  const par = (t) => (t.startsWith('-') ? `(${t})` : t); // 負の数はかっこでくくる
+  const E3 = `${r(mat.E, 1)}\\times10^{3}`;
+  const G3 = `${r(G, 1)}\\times10^{3}`;
+  const U = '\\ \\mathrm{MPa}';
+  const M6 = '\\times10^{-6}';
+  const ez = thicknessStrain(s, mat);
+  const ezLine =
+    `\\varepsilon_z&=-\\frac{\\nu}{E}(\\sigma_x+\\sigma_y)=-\\frac{${r(mat.nu)}}{${E3}}\\times\\{${fmt(s.sx)}+${par(fmt(s.sy))}\\}=${mu(ez)}${M6}`;
+  const gLine = `G&=\\frac{E}{2(1+\\nu)}=\\frac{${E3}}{2(1+${r(mat.nu)})}=${G3}${U}\\\\[2pt]`;
+  let tex;
+  if (mode === 'e') {
+    const coef = `\\frac{${E3}}{1-${r(mat.nu)}^2}`;
+    tex =
+      `\\begin{aligned}` + gLine +
+      `\\gamma_{xy}&=2\\varepsilon_p-(\\varepsilon_x+\\varepsilon_y)=\\{2\\times${par(mu(ep45()))}-(${mu(e.ex)}+${par(mu(e.ey))})\\}${M6}=${mu(e.gxy)}${M6}\\\\[2pt]` +
+      `\\sigma_x&=\\frac{E}{1-\\nu^2}(\\varepsilon_x+\\nu\\varepsilon_y)=${coef}\\times\\{${mu(e.ex)}+${r(mat.nu)}\\times${par(mu(e.ey))}\\}${M6}=${fmt(s.sx)}${U}\\\\[2pt]` +
+      `\\sigma_y&=\\frac{E}{1-\\nu^2}(\\varepsilon_y+\\nu\\varepsilon_x)=${coef}\\times\\{${mu(e.ey)}+${r(mat.nu)}\\times${par(mu(e.ex))}\\}${M6}=${fmt(s.sy)}${U}\\\\[2pt]` +
+      `\\tau_{xy}&=G\\gamma_{xy}=${G3}\\times${par(mu(e.gxy))}${M6}=${fmt(s.txy)}${U}\\\\[2pt]` +
+      ezLine +
+      `\\end{aligned}`;
+  } else {
+    tex =
+      `\\begin{aligned}` + gLine +
+      `\\varepsilon_x&=\\frac{\\sigma_x-\\nu\\sigma_y}{E}=\\frac{${fmt(s.sx)}-${r(mat.nu)}\\times${par(fmt(s.sy))}}{${E3}}=${mu(e.ex)}${M6}\\\\[2pt]` +
+      `\\varepsilon_y&=\\frac{\\sigma_y-\\nu\\sigma_x}{E}=\\frac{${fmt(s.sy)}-${r(mat.nu)}\\times${par(fmt(s.sx))}}{${E3}}=${mu(e.ey)}${M6}\\\\[2pt]` +
+      `\\gamma_{xy}&=\\frac{\\tau_{xy}}{G}=\\frac{${fmt(s.txy)}}{${G3}}=${mu(e.gxy)}${M6}\\\\[2pt]` +
+      `\\varepsilon_p&=\\frac{\\varepsilon_x+\\varepsilon_y+\\gamma_{xy}}{2}=${mu(ep45())}${M6}\\quad\\text{（45° のゲージの読み）}\\\\[2pt]` +
+      ezLine +
+      `\\end{aligned}`;
+  }
+  katexInto('f-current', tex);
 }
 
 // ---------------------------------------------------------------- 数式
@@ -1090,6 +1362,27 @@ function renderModelFormulas() {
 }
 
 function renderStaticFormulas() {
+  katexInto(
+    'f-p-hooke',
+    `\\varepsilon_x=\\frac{\\sigma_x-\\nu\\sigma_y}{E},\\qquad ` +
+      `\\varepsilon_y=\\frac{\\sigma_y-\\nu\\sigma_x}{E},\\qquad ` +
+      `\\gamma_{xy}=\\frac{\\tau_{xy}}{G},\\qquad G=\\frac{E}{2(1+\\nu)},\\qquad ` +
+      `\\varepsilon_z=-\\frac{\\nu}{E}(\\sigma_x+\\sigma_y)`
+  );
+  katexInto(
+    'f-p-inv',
+    `\\sigma_x=\\frac{E}{1-\\nu^{2}}(\\varepsilon_x+\\nu\\varepsilon_y),\\qquad ` +
+      `\\sigma_y=\\frac{E}{1-\\nu^{2}}(\\varepsilon_y+\\nu\\varepsilon_x),\\qquad ` +
+      `\\tau_{xy}=G\\gamma_{xy}`
+  );
+  katexInto(
+    'f-p-rosette',
+    `\\begin{aligned}` +
+      `\\varepsilon(\\phi)&=\\frac{\\varepsilon_x+\\varepsilon_y}{2}+\\frac{\\varepsilon_x-\\varepsilon_y}{2}\\cos 2\\phi+\\frac{\\gamma_{xy}}{2}\\sin 2\\phi\\\\[2pt]` +
+      `\\phi=45^\\circ:\\ \\varepsilon_p&=\\frac{\\varepsilon_x+\\varepsilon_y}{2}+\\frac{\\gamma_{xy}}{2}` +
+      `\\quad\\Longrightarrow\\quad \\gamma_{xy}=2\\varepsilon_p-(\\varepsilon_x+\\varepsilon_y)` +
+      `\\end{aligned}`
+  );
   katexInto('f-section', `A=\\frac{\\pi d^{2}}{4},\\qquad I=\\frac{\\pi d^{4}}{64},\\qquad I_p=\\frac{\\pi d^{4}}{32}`);
   katexInto(
     'f-stress',
