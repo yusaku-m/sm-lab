@@ -36,14 +36,16 @@
       <option value="plate">微小平板</option>
     </select><span id="model-suffix">の応力分布</span></h2>
     <p class="sub" id="vessel-sub" data-model="vessel"></p>
-    <p class="sub" data-model="plate">平面応力状態の微小な板（板厚方向 <span class="tex" data-tex="z"></span> は <span class="tex" data-tex="\sigma_z = \tau_{yz} = \tau_{zx} = 0"></span>）。中央に 0°・45°・90° のロゼットゲージを貼っています。応力かひずみのどちらかを与えると、もう一方がフックの法則で決まります。<b>紫のゲージ（<span class="tex" data-tex="\varepsilon_X"></span>）は掴んで回せます</b>（＝ <span class="tex" data-tex="\phi"></span> が変わり、その向きのゲージの読みが分かります）。</p>
+    <p class="sub" data-model="plate">平面応力状態の微小な板（板厚方向 <span class="tex" data-tex="z"></span> は <span class="tex" data-tex="\sigma_z = \tau_{yz} = \tau_{zx} = 0"></span>）。応力かひずみのどちらかが既知なら、もう一方はフックの法則で決まります。<b>応力が既知のときは矢印の端の丸をドラッグ</b>すると応力が変わります（外へ引くと大きく、板の中まで押し込むと向きが反転）。中央の<b>紫のゲージ（ロゼットを隠したときは X–Y 軸）を掴んで回すと</b> <span class="tex" data-tex="\phi"></span> が変わります。</p>
     <p class="sub" data-model="rod">棒の上をドラッグすると探触点が動きます。背景をドラッグすると視点が回ります。青い矢印＝荷重 <span class="tex" data-tex="P"></span>、橙の円弧＝曲げ <span class="tex" data-tex="M"></span>、緑の円弧＝ねじり <span class="tex" data-tex="T"></span>。黒いリングをドラッグすると輪切りの位置が動きます。</p>
 
     <div class="toolbar toolbar-tight" id="rod-actions" data-model="rod">
       <button class="btn btn-accent" id="pick-max" type="button"><span class="long">応力円が最大の点へ</span><span class="short">円が最大の点へ</span></button>
     </div>
 
-    <div class="toolbar toolbar-tight" id="plate-actions" data-model="plate"></div>
+    <div class="toolbar toolbar-tight" id="plate-actions" data-model="plate">
+      <label class="check" id="plate-rosette-wrap"><input type="checkbox" id="plate-rosette" checked><span class="long">ロゼットを表示</span><span class="short">ロゼット</span></label>
+    </div>
 
     <div class="toolbar" data-model="rod vessel">
       <label for="field" class="field-label">コンター</label>
@@ -133,18 +135,18 @@
       <div id="vessel-fields"></div>
       <p class="warn" id="vessel-warn" hidden></p>
     </div>
-    <div data-model="plate">
-      <div class="seg" role="group" aria-label="与える量">
-        <button class="seg-btn" type="button" data-pmode="s">応力を与える</button>
-        <button class="seg-btn" type="button" data-pmode="e">ひずみを与える（ロゼット）</button>
+    <div data-model="plate" class="plate-ui" id="plate-ui">
+      <div class="seg" role="group" aria-label="既知の量">
+        <button class="seg-btn" type="button" data-pmode="s">応力が既知</button>
+        <button class="seg-btn" type="button" data-pmode="e">ひずみが既知</button>
       </div>
-      <div class="pgroup" id="plate-stress-group">
-        <p class="group-cap">応力 3 成分 <span class="derived-note">（ひずみから計算）</span></p>
+      <!-- 既知でない側は出さない（値は図・成分表・式で見る）。syncPlateUI() が hidden を切り替える -->
+      <div id="plate-stress-group">
+        <p class="group-cap">応力 3 成分</p>
         <div id="plate-stress-fields"></div>
       </div>
-      <hr class="divider">
-      <div class="pgroup" id="plate-strain-group">
-        <p class="group-cap">ひずみ 3 成分（0°・45°・90° ロゼットの読み） <span class="derived-note">（応力から計算）</span></p>
+      <div id="plate-strain-group">
+        <p class="group-cap">ひずみ 3 成分<span class="ros-on">（0°・45°・90° ロゼットの読み）</span></p>
         <div id="plate-strain-fields"></div>
       </div>
       <hr class="divider">
@@ -202,7 +204,7 @@
       <div id="f-rot"></div>
     </div>
     <p data-model="vessel" id="v-note"></p>
-    <p data-model="plate">平面応力なので板厚方向（<span class="tex" data-tex="z"></span>）の垂直応力は 0 ですが、ひずみ <span class="tex" data-tex="\varepsilon_z = -\nu(\sigma_x+\sigma_y)/E"></span> は 0 になりません（板厚が変わる）。<span class="tex" data-tex="z"></span> も主方向なので、3 つの円は x–y 面・y′–z 面・z–x′ 面（x′・y′ は面内の主応力の方向）になります。紫のゲージを回して読みが最大・最小になる向きが、応力の主方向（<span class="tex" data-tex="\theta_p"></span>）と一致することも確かめてみてください（等方性材料ではひずみと応力の主方向が同じ）。</p>
+    <p data-model="plate">平面応力なので板厚方向（<span class="tex" data-tex="z"></span>）の垂直応力は 0 ですが、ひずみ <span class="tex" data-tex="\varepsilon_z = -\nu(\sigma_x+\sigma_y)/E"></span> は 0 になりません（板厚が変わる）。<span class="tex" data-tex="z"></span> も主方向なので、3 つの円は x–y 面・y′–z 面・z–x′ 面（x′・y′ は面内の主応力の方向）になります。紫のゲージ（φ を回すと現れ、0°・45°・90° でロゼットのゲージに重なります）を回して読みが最大・最小になる向きが、応力の主方向（<span class="tex" data-tex="\theta_p"></span>）と一致することも確かめてみてください（等方性材料ではひずみと応力の主方向が同じ）。</p>
     <p data-model="rod">内圧などが無いので周方向・半径方向の垂直応力は恒等的に 0 になります。つまり丸棒のこの状態は「軸方向の一軸応力＋ねじりせん断」であり、応力円が原点まわりでどう動くかを見ると、引張だけ・ねじりだけ・その組合せの違いがそのまま読み取れます。</p>
   </section>
 

@@ -4,7 +4,7 @@
 
 import { RodScene } from './rod3d.js';
 import { VesselScene } from './vessel3d.js';
-import { renderPlate } from './plate2d.js';
+import { renderPlate, NLEN0, NLEN, TLEN0, TLEN } from './plate2d.js';
 import {
   renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames, setOutOfPlaneAxis,
 } from './mohr2d.js';
@@ -35,6 +35,7 @@ const state = {
     s: { sx: 0, sy: 0, txy: 0 },
     e: { ex: 400, ey: -100, gxy: 400 }, // εp = 350（演習のロゼットの読みの形）
     mat: { E: 206, nu: 0.3 }, // 軟鋼（Grading の Material.Steel）
+    rosette: true, // ロゼットを描くか（隠すと中心に回した X–Y 軸を描く）
   },
   // URL から渡された薄肉容器の探触点（URL の単位のまま。シーン生成後に流し込む）
   vprobe: null,
@@ -72,8 +73,9 @@ function buildHash() {
     q.set('pm', P.mode);
     if (P.mode === 's') q.set('ps', [P.s.sx, P.s.sy, P.s.txy].map((v) => round(v, 1)).join(','));
     else q.set('pe', [P.e.ex, P.e.ey, P.e.gxy].map((v) => round(v, 0)).join(','));
-    q.set('pE', String(round(P.mat.E, 1)));
+    q.set('pE', String(round(P.mat.E, 2))); // G から決めた E は端数が出るので 2 桁
     q.set('pn', String(round(P.mat.nu, 3)));
+    if (!P.rosette) q.set('ro', '0'); // ロゼットを隠しているときだけ書く
   } else if (isVessel()) {
     q.set('k', state.model);
     q.set('vp', String(round(state.vessel.p, 2)));
@@ -162,6 +164,7 @@ function applyHash(hash) {
   if (pe) P.e = { ex: pe[0], ey: pe[1], gxy: pe[2] };
   P.mat.E = num('pE', P_RANGES.E[0], P_RANGES.E[1], P.mat.E);
   P.mat.nu = num('pn', P_RANGES.nu[0], P_RANGES.nu[1], P.mat.nu);
+  P.rosette = q.get('ro') !== '0'; // 省略は表示（既定）
   state.loads.N = num('n', -RANGES.N, RANGES.N, state.loads.N);
   state.loads.M = num('m', -RANGES.M, RANGES.M, state.loads.M);
   state.loads.T = num('t', -RANGES.T, RANGES.T, state.loads.T);
@@ -296,13 +299,16 @@ const P_STRESS_SPEC = [
 ];
 const MU = '×10⁻⁶';
 const P_STRAIN_SPEC = [
-  { key: 'ex', tex: '\\varepsilon_x', name: '0° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
+  // 呼び名はロゼットの表示に合わせて切り替える（.ros-on / .ros-off を #plate-ui の no-rosette で出し分け）
+  { key: 'ex', tex: '\\varepsilon_x', name: '<span class="ros-on">0° ゲージの読み</span><span class="ros-off">垂直ひずみ</span>', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
   { key: 'ep', tex: '\\varepsilon_p', name: '45° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
-  { key: 'ey', tex: '\\varepsilon_y', name: '90° ゲージの読み', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
-  { key: 'gxy', tex: '\\gamma_{xy}', name: 'せん断ひずみ（= 2εp − (εx + εy)）', unit: MU, min: -P_RANGES.g, max: P_RANGES.g, step: 10 },
+  { key: 'ey', tex: '\\varepsilon_y', name: '<span class="ros-on">90° ゲージの読み</span><span class="ros-off">垂直ひずみ</span>', unit: MU, min: -P_RANGES.e, max: P_RANGES.e, step: 10 },
+  { key: 'gxy', tex: '\\gamma_{xy}', name: 'せん断ひずみ<span class="ros-on">（= 2εp − (εx + εy)）</span>', unit: MU, min: -P_RANGES.g, max: P_RANGES.g, step: 10 },
 ];
+// G を動かすときはポアソン比を固定して E を追随させる（E = 2G(1+ν)）。E を動かせば G が追随する
 const P_MAT_SPEC = [
   { key: 'E', tex: 'E', name: '縦弾性係数', unit: 'GPa', min: P_RANGES.E[0], max: P_RANGES.E[1], step: 1 },
+  { key: 'G', tex: 'G', name: '横弾性係数（ν 固定で E が追随）', unit: 'GPa', min: 0.5, max: 120, step: 0.5 },
   { key: 'nu', tex: '\\nu', name: 'ポアソン比', unit: '-', min: P_RANGES.nu[0], max: P_RANGES.nu[1], step: 0.01 },
 ];
 // Grading の packages/quiz/Material.py と同じ値
@@ -334,14 +340,25 @@ for (const spec of P_STRAIN_SPEC) {
   const r = spec.key === 'ep'
     ? makeRow(spec, ep45, (v) => { const e = state.plate.e; e.gxy = clampG(2 * v - (e.ex + e.ey)); })
     : makeRow(spec, () => state.plate.e[spec.key], (v) => { state.plate.e[spec.key] = v; });
+  if (spec.key === 'ep') r.el.classList.add('ros-on'); // ロゼットを隠したら εp の行も出さない
   rows.push(r);
   $('plate-strain-fields').appendChild(r.el);
 }
 for (const spec of P_MAT_SPEC) {
-  const r = makeRow(spec, () => state.plate.mat[spec.key], (v) => { state.plate.mat[spec.key] = v; });
+  const mat = () => state.plate.mat;
+  const r = spec.key === 'G'
+    ? makeRow(spec, () => shearModulus(mat()), (v) => {
+      mat().E = Math.min(P_RANGES.E[1], Math.max(P_RANGES.E[0], 2 * v * (1 + mat().nu)));
+    })
+    : makeRow(spec, () => mat()[spec.key], (v) => { mat()[spec.key] = v; });
   rows.push(r);
   $('plate-mat-fields').appendChild(r.el);
 }
+
+$('plate-rosette').addEventListener('change', () => {
+  state.plate.rosette = $('plate-rosette').checked;
+  update();
+});
 
 $('plate-mat').replaceChildren(
   ...MATERIALS.map((m, i) => new Option(`${m.name}（E = ${m.E} GPa, ν = ${m.nu}）`, String(i))),
@@ -360,17 +377,16 @@ for (const b of document.querySelectorAll('[data-pmode]')) {
   });
 }
 
-/** 与える側のトグル・入力欄の有効/無効・材料のセレクトを状態に合わせる。 */
+/** 既知の量のトグル・入力欄の出し分け（既知でない側は出さない）・ロゼット・材料のセレクトを状態に合わせる。 */
 function syncPlateUI() {
   const P = state.plate;
   for (const b of document.querySelectorAll('[data-pmode]')) {
     b.setAttribute('aria-pressed', b.dataset.pmode === P.mode ? 'true' : 'false');
   }
-  for (const [id, on] of [['plate-stress-group', P.mode === 's'], ['plate-strain-group', P.mode === 'e']]) {
-    const g = $(id);
-    g.classList.toggle('derived', !on);
-    for (const inp of g.querySelectorAll('input')) inp.disabled = !on;
-  }
+  $('plate-stress-group').hidden = P.mode !== 's';
+  $('plate-strain-group').hidden = P.mode !== 'e';
+  $('plate-rosette').checked = P.rosette;
+  $('plate-ui').classList.toggle('no-rosette', !P.rosette);
   const i = MATERIALS.findIndex((m) => Math.abs(m.E - P.mat.E) < 1e-9 && Math.abs(m.nu - P.mat.nu) < 1e-9);
   $('plate-mat').value = i >= 0 ? String(i) : 'custom';
 }
@@ -391,7 +407,7 @@ for (const pr of PLATE_PRESETS) {
     state.plate.e = strainFromStress(state.plate.s, state.plate.mat);
     update();
   });
-  $('plate-actions').appendChild(b);
+  $('plate-actions').insertBefore(b, $('plate-rosette-wrap')); // 「ロゼットを表示」は右端に残す
 }
 
 // ---------------------------------------------------------------- コンター選択
@@ -660,41 +676,106 @@ function wrap90(deg) {
   return d;
 }
 
-// --- 微小平板の紫のゲージ（φ の向き）を掴んで回す。ゲージは向きの無い線なので φ は ±90° に畳む。
-// 中心の反対側（φ+180°）に描いているが、どちら側を掴んでも同じ向きになる。
+// --- 微小平板の図のドラッグ
+//   応力の矢印の持ち手（[data-grab]、応力が既知のときだけある）… その応力を変える
+//   板の中 … 紫のゲージ（ロゼットを隠したときは X–Y 軸）を回す＝ φ を変える
 $('plate-view').addEventListener('pointerdown', (ev) => {
   if (!plateDrag || (ev.pointerType === 'touch' && isCompact())) return;
   const svg = $('plate-view').querySelector('svg');
   const m = svg && svg.getScreenCTM();
   if (!m) return;
+  // 図はドラッグ中も同じ viewBox・同じ位置に描き直すだけなので、掴んだ時点の変換をそのまま使える
   const toUser = (e) => new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
   const q = toUser(ev);
-  const d = Math.hypot(q.x - plateDrag.cx, q.y - plateDrag.cy);
-  if (d < 8 || d > 110) return; // 板の外（応力の矢印のあたり）は対象外
+  const grab = ev.target.closest && ev.target.closest('[data-grab]');
+  let move;
+  if (grab && state.plate.mode === 's') {
+    move = stressDragger(grab.dataset.grab, toUser);
+  } else {
+    const d = Math.hypot(q.x - plateDrag.cx, q.y - plateDrag.cy);
+    if (d < 8 || d > 110) return; // 板の外（応力の矢印のあたり）は対象外
+    move = phiDragger(q);
+  }
   ev.preventDefault();
+  $('plate-view').classList.add('grabbing');
+  move(ev);
+  const up = () => {
+    $('plate-view').classList.remove('grabbing');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    if (plateRef !== null) {
+      plateRef = null; // 離したら矢印の縮尺を測り直す
+      update();
+    }
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+});
+
+/**
+ * φ を回す。掴んだ点からの回転量だけ足す（ゲージ・X 軸・Y 軸のどこを掴んでも跳ばない）。
+ * ゲージ・軸は向きの無い線として扱い、φ は応力円の直径のドラッグと同じく ±90° に畳む。
+ */
+function phiDragger(q0) {
   if (state.plane !== 'xy') {
-    // φ は x–y 面で測る（他の面を選んでいたら x–y 面に戻す）
+    // φ は x–y 面で測る（他の円を選んでいたら x–y 面に戻す）
     state.plane = 'xy';
     state.planes.xy = true;
     planeInputs.xy.checked = true;
   }
-  $('plate-view').classList.add('grabbing');
-  const toPhi = (e) => {
+  const ang = (t) => Math.atan2(-(t.y - plateDrag.cy), t.x - plateDrag.cx);
+  let prev = ang(q0);
+  let deg = state.phi;
+  return (e) => {
+    const t = new DOMPoint(e.clientX, e.clientY).matrixTransform($('plate-view').querySelector('svg').getScreenCTM().inverse());
+    const a = ang(t);
+    let da = a - prev;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    prev = a;
+    deg += (da * 180) / Math.PI;
+    setPhi(wrap90(deg));
+  };
+}
+
+/**
+ * 応力の矢印の端を掴んで応力を変える（plate2d.js の矢印の長さ len()/tlen() の逆算）。
+ *   σx・σy … 面から外へ引いた距離が大きさ。板の中まで押し込むと向きが反転し、もう一度外へ引くと反対向きに伸びる
+ *   τxy   … +x 面の矢印の先端を上下に。中心より上なら正、下なら負
+ * ドラッグ中は矢印の縮尺（ref）を固定する（掴んだ矢印が指の下から逃げないように）。
+ */
+function stressDragger(key, toUser) {
+  const g = plateDrag;
+  plateRef = g.ref;
+  const S = state.plate.s;
+  let sign = S[key] < 0 ? -1 : 1;
+  let inside = false;
+  const lim = P_RANGES.s;
+  const clampS = (v) => Math.round(Math.min(lim, Math.max(-lim, v)));
+  return (e) => {
     const t = toUser(e);
-    const a = Math.atan2(-(t.y - plateDrag.cy), t.x - plateDrag.cx);
-    setPhi(wrap90((a * 180) / Math.PI - 180));
+    if (key === 'txy') {
+      const u = Math.max(-(g.h - 8), Math.min(g.h - 8, g.cy - t.y));
+      S.txy = clampS(Math.sign(u) * (Math.max(0, Math.abs(u) - TLEN0) * g.ref) / TLEN);
+    } else {
+      // 面から外向きの距離
+      const d = key === 'sx' ? t.x - (g.cx + g.h) : g.cy - g.h - t.y;
+      if (d < 0) {
+        if (!inside) sign = -sign; // 板の中へ入った瞬間に 1 回だけ反転
+        inside = true;
+        S[key] = 0;
+      } else {
+        inside = false;
+        // 矢印は長くても 1.9 ref ぶんまで（それ以上は離せば縮尺が測り直されるので、もう一度引く）
+        const mag = Math.min(1.9 * g.ref, (Math.max(0, d - g.gap - NLEN0) * g.ref) / NLEN);
+        S[key] = clampS(sign * mag);
+      }
+    }
+    update();
   };
-  toPhi(ev);
-  const up = () => {
-    $('plate-view').classList.remove('grabbing');
-    window.removeEventListener('pointermove', toPhi);
-    window.removeEventListener('pointerup', up);
-    window.removeEventListener('pointercancel', up);
-  };
-  window.addEventListener('pointermove', toPhi);
-  window.addEventListener('pointerup', up);
-  window.addEventListener('pointercancel', up);
-});
+}
 
 // ---------------------------------------------------------------- 対象の切り替え
 
@@ -794,6 +875,8 @@ let mohrHit = [];
 let vessel = null;
 // 直前に描いた微小平板の図の中心（回転ゲージを掴んで回すのに使う）
 let plateDrag = null;
+// 応力の矢印をドラッグしている間の矢印の縮尺 [MPa]（null なら毎回最大の成分から決める）
+let plateRef = null;
 
 // ---------------------------------------------------------------- 3D シーン
 
@@ -966,6 +1049,9 @@ function update(opts = {}) {
       syncPlateUI();
       plateDrag = renderPlate($('plate-view'), state.plate.s, state.plate.e, phi, {
         showRot: state.plane === 'xy',
+        rosette: state.plate.rosette,
+        editable: state.plate.mode === 's',
+        ref: plateRef, // 応力の矢印をドラッグしている間だけ、矢印の縮尺を固定する
         fontScale: isCompact() ? 1.5 : 1,
       });
       renderPlateProbe(phi);
@@ -1229,21 +1315,24 @@ function renderPlateProbe(phi) {
   const rot = state.plane === 'xy'
     ? `　／ ε<sub>X</sub>（φ = ${state.phi.toFixed(0)}°） = ${val(strainAlong(e, phi))}`
     : '';
+  const ros = state.plate.rosette;
   if (isCompact()) {
     $('probe').innerHTML =
-      `<b>ゲージ</b> εx ${val(e.ex)}　εp ${val(ep45())}　εy ${val(e.ey)}　γxy ${val(e.gxy)}` +
+      `<b>${ros ? 'ゲージ' : 'ひずみ'}</b> εx ${val(e.ex)}　${ros ? `εp ${val(ep45())}　` : ''}εy ${val(e.ey)}　γxy ${val(e.gxy)}` +
       (rot ? `　εX ${val(strainAlong(e, phi))}` : '') + `　[×10⁻⁶]`;
     return;
   }
-  $('probe').innerHTML =
-    `<b>ゲージの読み</b>　εx = ${val(e.ex)} ／ εp（45°） = ${val(ep45())} ／ εy = ${val(e.ey)}` +
-    `　→　γxy = 2εp − (εx + εy) = ${val(e.gxy)}${rot}` +
-    `　／ 板厚方向 εz = ${val(ez)}　<span class="note" style="opacity:.75">[×10⁻⁶]</span>`;
+  $('probe').innerHTML = ros
+    ? `<b>ゲージの読み</b>　εx = ${val(e.ex)} ／ εp（45°） = ${val(ep45())} ／ εy = ${val(e.ey)}` +
+      `　→　γxy = 2εp − (εx + εy) = ${val(e.gxy)}${rot}` +
+      `　／ 板厚方向 εz = ${val(ez)}　<span class="note" style="opacity:.75">[×10⁻⁶]</span>`
+    : `<b>ひずみ</b>　εx = ${val(e.ex)} ／ εy = ${val(e.ey)} ／ γxy = ${val(e.gxy)}${rot}` +
+      `　／ 板厚方向 εz = ${val(ez)}　<span class="note" style="opacity:.75">[×10⁻⁶]</span>`;
 }
 
 /** 微小平板の「現在の値」。与えている側から、もう一方を計算する式を数値入りで書く。 */
 function renderPlateCurrent() {
-  const { e, s, mat, mode } = state.plate;
+  const { e, s, mat, mode, rosette } = state.plate;
   const G = shearModulus(mat);
   const r = (v, d = 3) => String(round(v, d));
   const par = (t) => (t.startsWith('-') ? `(${t})` : t); // 負の数はかっこでくくる
@@ -1260,7 +1349,10 @@ function renderPlateCurrent() {
     const coef = `\\frac{${E3}}{1-${r(mat.nu)}^2}`;
     tex =
       `\\begin{aligned}` + gLine +
-      `\\gamma_{xy}&=2\\varepsilon_p-(\\varepsilon_x+\\varepsilon_y)=\\{2\\times${par(mu(ep45()))}-(${mu(e.ex)}+${par(mu(e.ey))})\\}${M6}=${mu(e.gxy)}${M6}\\\\[2pt]` +
+      // ロゼットのときは γxy をゲージの読みから求める（隠しているときは γxy そのものが既知）
+      (rosette
+        ? `\\gamma_{xy}&=2\\varepsilon_p-(\\varepsilon_x+\\varepsilon_y)=\\{2\\times${par(mu(ep45()))}-(${mu(e.ex)}+${par(mu(e.ey))})\\}${M6}=${mu(e.gxy)}${M6}\\\\[2pt]`
+        : '') +
       `\\sigma_x&=\\frac{E}{1-\\nu^2}(\\varepsilon_x+\\nu\\varepsilon_y)=${coef}\\times\\{${mu(e.ex)}+${r(mat.nu)}\\times${par(mu(e.ey))}\\}${M6}=${fmt(s.sx)}${U}\\\\[2pt]` +
       `\\sigma_y&=\\frac{E}{1-\\nu^2}(\\varepsilon_y+\\nu\\varepsilon_x)=${coef}\\times\\{${mu(e.ey)}+${r(mat.nu)}\\times${par(mu(e.ex))}\\}${M6}=${fmt(s.sy)}${U}\\\\[2pt]` +
       `\\tau_{xy}&=G\\gamma_{xy}=${G3}\\times${par(mu(e.gxy))}${M6}=${fmt(s.txy)}${U}\\\\[2pt]` +
@@ -1272,7 +1364,9 @@ function renderPlateCurrent() {
       `\\varepsilon_x&=\\frac{\\sigma_x-\\nu\\sigma_y}{E}=\\frac{${fmt(s.sx)}-${r(mat.nu)}\\times${par(fmt(s.sy))}}{${E3}}=${mu(e.ex)}${M6}\\\\[2pt]` +
       `\\varepsilon_y&=\\frac{\\sigma_y-\\nu\\sigma_x}{E}=\\frac{${fmt(s.sy)}-${r(mat.nu)}\\times${par(fmt(s.sx))}}{${E3}}=${mu(e.ey)}${M6}\\\\[2pt]` +
       `\\gamma_{xy}&=\\frac{\\tau_{xy}}{G}=\\frac{${fmt(s.txy)}}{${G3}}=${mu(e.gxy)}${M6}\\\\[2pt]` +
-      `\\varepsilon_p&=\\frac{\\varepsilon_x+\\varepsilon_y+\\gamma_{xy}}{2}=${mu(ep45())}${M6}\\quad\\text{（45° のゲージの読み）}\\\\[2pt]` +
+      (rosette
+        ? `\\varepsilon_p&=\\frac{\\varepsilon_x+\\varepsilon_y+\\gamma_{xy}}{2}=${mu(ep45())}${M6}\\quad\\text{（45° のゲージの読み）}\\\\[2pt]`
+        : '') +
       ezLine +
       `\\end{aligned}`;
   }

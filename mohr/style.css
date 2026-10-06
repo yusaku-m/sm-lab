@@ -504,10 +504,13 @@ select:hover, .btn:hover { border-color: var(--accent-soft); }
   box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 .group-cap { font-size: 0.8rem; font-weight: 600; margin: 0 0 10px; }
-.derived-note { display: none; font-weight: 400; color: var(--muted); }
-.pgroup.derived .derived-note { display: inline; }
-.pgroup.derived .field-row { opacity: 0.6; }
-.field-inputs input:disabled { cursor: not-allowed; }
+/* ロゼットを隠したときの呼び名の出し分け（app.js の syncPlateUI が #plate-ui に no-rosette を付ける） */
+.ros-off { display: none; }
+.plate-ui.no-rosette .ros-on { display: none; }
+.plate-ui.no-rosette .ros-off { display: inline; }
+/* 応力の矢印の持ち手（plate2d.js の [data-grab]） */
+.plate-view [data-grab] { cursor: grab; }
+.plate-view.grabbing, .plate-view.grabbing [data-grab] { cursor: grabbing; }
 
 .err {
   color: var(--accent-strong);
