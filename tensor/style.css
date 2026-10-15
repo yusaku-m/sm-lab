@@ -79,15 +79,8 @@
 }
 .mat td small { display: block; color: var(--muted); font-size: 0.66rem; text-align: left; }
 
-/* グラフ */
-.plot svg, .mohr svg { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
-.plot svg { aspect-ratio: 16 / 8; }
-.mohr svg { aspect-ratio: 16 / 9; cursor: default; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 14px; font-size: 0.82rem; }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
-.legend .now { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.76rem; }
-.h3 { font-family: var(--display-font); font-weight: 400; font-size: 1.05rem; margin: 6px 0 2px; }
+/* モールの応力円 */
+.mohr svg { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
 
 /* 式 */
 .formula h3 { font-family: var(--display-font); font-weight: 400; font-size: 1.02rem; margin: 0 0 6px; }

@@ -484,8 +484,6 @@ Panel.prototype.end = function (opts = {}) {
 };
 
 // ---------------------------------------------------------------- 描画: 成分の表
-const CMP6 = [['xx', 0, 0], ['yy', 1, 1], ['zz', 2, 2], ['xy', 0, 1], ['yz', 1, 2], ['xz', 0, 2]];
-const CMP_COLOR = { xx: '#d0473b', yy: '#245b8d', zz: '#7a6a58', xy: '#2f8f6f', yz: '#c08a1e', xz: '#8a4fbf' };
 
 function heat(v, ref) {
   if (!(ref > 0)) return 'transparent';
@@ -498,94 +496,9 @@ function renderMatrix(host, S, primed, ref, title) {
   host.innerHTML = `<div class="cap">${title}</div><table>${rows}</table>`;
 }
 
-// ---------------------------------------------------------------- 描画: 成分の変化のグラフ
-const plotHost = $('plot');
+// ---------------------------------------------------------------- SVG
 const NS = 'http://www.w3.org/2000/svg';
 const sv = (name, attrs, parent) => { const e = document.createElementNS(NS, name); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (parent) parent.appendChild(e); return e; };
-let plotGeom = null;
-
-function sweepInfo() {
-  const r = state.rot;
-  if (r.mode === 'axis') return { name: '\\theta', lo: -180, hi: 180, cur: r.th, Qat: (a) => Mdl.rotAxis(r.axis, a * Math.PI / 180) };
-  const i = r.sweep, lim = i === 1 ? 90 : 180;
-  const names = ['\\alpha', '\\beta', '\\gamma'];
-  return {
-    name: names[i], lo: -lim, hi: lim, cur: r.eu[i],
-    Qat: (a) => { const e = r.eu.slice(); e[i] = a; return Mdl.rotEuler(...e.map((x) => x * Math.PI / 180)); },
-  };
-}
-
-function niceStep(span, n = 6) {
-  const raw = span / n, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
-  return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;
-}
-
-function renderPlot(cur) {
-  const W = 640, H = 320, ml = 52, mr = 14, mt = 14, mb = 32;
-  const sw = sweepInfo();
-  const N = 180, data = {};
-  for (const [c] of CMP6) data[c] = [];
-  for (let n = 0; n <= N; n++) {
-    const a = sw.lo + (sw.hi - sw.lo) * n / N;
-    const Sp = Mdl.rotateTensor(cur.S, sw.Qat(a));
-    for (const [c, i, j] of CMP6) data[c].push([a, Sp[i][j]]);
-  }
-  let y0 = 0, y1 = 0;
-  for (const c in data) for (const [, v] of data[c]) { y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
-  if (y1 - y0 < 1e-9) { y0 = -1; y1 = 1; }
-  const padY = (y1 - y0) * 0.08; y0 -= padY; y1 += padY;
-  const X = (a) => ml + (a - sw.lo) / (sw.hi - sw.lo) * (W - ml - mr);
-  const Y = (v) => mt + (y1 - v) / (y1 - y0) * (H - mt - mb);
-  plotGeom = { X, sw, ml, mr, W };
-
-  const svg = sv('svg', { viewBox: `0 0 ${W} ${H}` });
-  const st = niceStep(y1 - y0);
-  for (let v = Math.ceil(y0 / st) * st; v <= y1; v += st) {
-    sv('line', { x1: ml, x2: W - mr, y1: Y(v), y2: Y(v), stroke: Math.abs(v) < st * 1e-6 ? '#1d293288' : '#1d293218', 'stroke-width': 1 }, svg);
-    sv('text', { x: ml - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#627078' }, svg).textContent = Mdl.fmt(v, 3);
-  }
-  const ast = (sw.hi - sw.lo) > 200 ? 45 : 30;
-  for (let a = sw.lo; a <= sw.hi + 1e-9; a += ast) {
-    sv('line', { x1: X(a), x2: X(a), y1: mt, y2: H - mb, stroke: '#1d293218' }, svg);
-    sv('text', { x: X(a), y: H - mb + 16, 'text-anchor': 'middle', 'font-size': 11, fill: '#627078' }, svg).textContent = `${a}°`;
-  }
-  sv('text', { x: 8, y: mt + 4, 'font-size': 11, fill: '#627078' }, svg).textContent = 'MPa';
-  for (const [c] of CMP6) {
-    const pts = data[c].map(([a, v]) => `${X(a).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
-    sv('polyline', { points: pts, fill: 'none', stroke: CMP_COLOR[c], 'stroke-width': c[0] === c[1] ? 2.2 : 1.8, 'stroke-dasharray': c[0] === c[1] ? '' : '6 3' }, svg);
-  }
-  const xc = X(Math.max(sw.lo, Math.min(sw.hi, sw.cur)));
-  sv('line', { x1: xc, x2: xc, y1: mt, y2: H - mb, stroke: '#ef6a4b', 'stroke-width': 2 }, svg);
-  for (const [c, i, j] of CMP6) sv('circle', { cx: xc, cy: Y(cur.Sp[i][j]), r: 4, fill: CMP_COLOR[c], stroke: '#fff', 'stroke-width': 1.2 }, svg);
-  plotHost.replaceChildren(svg);
-  svg.addEventListener('pointerdown', plotDown);
-
-  $('legend').innerHTML = CMP6.map(([c, i, j]) => `<span><i style="background:${CMP_COLOR[c]}"></i>${tx(`\\sigma'_{${c}}`)}<span class="now">${Mdl.fmt(cur.Sp[i][j], 3)}</span></span>`).join('');
-  const r = state.rot;
-  $('plot-sub').innerHTML = r.mode === 'axis'
-    ? `横軸は ${r.axis} 軸まわりの回転角 ${tx('\\theta')}。実線は垂直応力、破線はせん断応力。グラフをクリック・ドラッグすると角度を選べます。`
-    : `横軸は最後に動かした角 ${tx(sw.name)}（ほかの 2 つは今の値のまま）。実線は垂直応力、破線はせん断応力。`;
-}
-
-function plotDown(e) {
-  const svg = e.currentTarget;
-  svg.setPointerCapture(e.pointerId);
-  const set = (ev) => {
-    const rc = svg.getBoundingClientRect();
-    const x = (ev.clientX - rc.left) / rc.width * plotGeom.W;
-    const { sw, ml, mr, W } = plotGeom;
-    let a = sw.lo + (x - ml) / (W - ml - mr) * (sw.hi - sw.lo);
-    a = Math.round(Math.max(sw.lo, Math.min(sw.hi, a)));
-    stopAnim();
-    if (state.rot.mode === 'axis') state.rot.th = a; else state.rot.eu[state.rot.sweep] = a;
-    render({ light: true });
-  };
-  set(e);
-  const move = (ev) => set(ev);
-  const up = () => { svg.removeEventListener('pointermove', move); svg.removeEventListener('pointerup', up); scheduleHash(); };
-  svg.addEventListener('pointermove', move);
-  svg.addEventListener('pointerup', up);
-}
 
 // ---------------------------------------------------------------- 描画: モールの応力円
 function renderMohr(cur) {
@@ -930,7 +843,6 @@ function render(opts = {}) {
   renderElement(elemPanels[1], cur.Sp, cur.Q, true, ref, true);
   renderMatrix($('mat0'), cur.S, false, ref, `回転前 ${tx('\\bm\\sigma')} [MPa]`);
   renderMatrix($('mat1'), cur.Sp, true, ref, `回転後 ${tx("\\bm\\sigma'")} [MPa]`);
-  renderPlot(cur);
   renderMohr(cur);
   // 式（KaTeX）は重いので、ドラッグ・アニメーション中は間引く
   clearTimeout(formulaTimer);
