@@ -51,7 +51,6 @@ const state = {
   custom: zeroCustom(),
   customSym: true,
   rot: { mode: 'axis', axis: 'z', th: 0, eu: [0, 0, 0], sweep: 0 },
-  drag: 'view',
 };
 const camera = new Camera();
 let playing = false, playLast = 0, tween = null, hashTimer = 0, lastHash = '', formulaTimer = 0;
@@ -196,9 +195,6 @@ $('play').addEventListener('click', () => {
   $('play').querySelector('.lbl').textContent = playing ? '止める' : '回す';
   if (playing) { playLast = performance.now(); requestAnimationFrame(tick); } else render();
 });
-for (const b of document.querySelectorAll('[data-drag]')) {
-  b.addEventListener('click', () => { state.drag = b.dataset.drag; render(); });
-}
 
 function stopAnim() {
   tween = null;
@@ -325,7 +321,6 @@ function syncInputs(opts = {}) {
   $('th').value = r.th;
   if (opts.keepNum !== 'th-n') $('th-n').value = +r.th.toFixed(1);
   r.eu.forEach((a, i) => { $(`eu${i}`).value = a; if (opts.keepNum !== `eu${i}-n`) $(`eu${i}-n`).value = +a.toFixed(1); });
-  for (const b of document.querySelectorAll('[data-drag]')) b.setAttribute('aria-pressed', String(b.dataset.drag === state.drag));
 }
 
 // ---------------------------------------------------------------- 描画: 丸棒
@@ -883,17 +878,16 @@ $('share-copy').addEventListener('click', async () => {
   setTimeout(() => { $('share-copy').textContent = 'URL をコピー'; }, 1500);
 });
 
-// ---------------------------------------------------------------- ドラッグ（視点／要素）
+// ---------------------------------------------------------------- ドラッグ（回転前・丸棒＝視点、回転後＝要素そのもの）
 function bindDrag(panel, isElem) {
   panel.svg.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     panel.svg.setPointerCapture(e.pointerId);
     panel.host.classList.add('dragging');
     let lx = e.clientX, ly = e.clientY;
-    const rotateElem = isElem && state.drag === 'elem';
     const move = (ev) => {
       const dx = ev.clientX - lx, dy = ev.clientY - ly; lx = ev.clientX; ly = ev.clientY;
-      if (rotateElem) {
+      if (isElem) {
         stopAnim();
         const ax = camera.screenAxes(), k = 0.012;
         let Qm = rotQ();
