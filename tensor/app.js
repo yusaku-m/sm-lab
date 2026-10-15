@@ -794,6 +794,9 @@ function render(opts = {}) {
   let ref = 0;
   if (cur.sym) ref = Math.max(...Mdl.eigSym(cur.S).vals.map(Math.abs));
   else ref = Math.max(...cur.S.flat().map(Math.abs));
+  // 対称でない行列は応力テンソルではないので、微小要素の図の上に大きく注意を重ねる
+  // （図は説明に使うのでそのまま表示し、ドラッグもできる）
+  $('elem-warn').hidden = cur.sym;
   renderRod(cur);
   renderElement(elemPanels[0], cur.S, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], false, ref, false);
   renderElement(elemPanels[1], cur.Sp, cur.Q, true, ref, true);

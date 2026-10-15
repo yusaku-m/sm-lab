@@ -52,7 +52,7 @@
       <p class="sub">成分を直接入力します（単位 MPa）。応力テンソルは対称行列になるはずなので、対称でないときは注意を出します。</p>
       <div class="cust-grid" id="cust"></div>
       <label class="check"><input type="checkbox" id="cust-sym" checked>対称に保つ（右上を入力すると左下も変わる）</label>
-      <div class="err" id="cust-warn" hidden></div>
+      <div class="err warn-box" id="cust-warn" hidden></div>
     </div>
   </section>
 
@@ -92,6 +92,8 @@
       <button class="btn btn-accent" id="to-principal" type="button">主軸へ回す</button>
     </div>
 
+    <div class="elem-stage">
+    <div class="elem-warn" id="elem-warn" hidden><b>応力テンソルではありません</b><span>行列が対称でない（<span class="tex" data-tex="\sigma_{ij}\ne\sigma_{ji}"></span>）ので、モーメントのつり合いを満たす微小要素は存在しません。図は行列をそのまま描いたものです。</span></div>
     <div class="elem-pair">
       <figure>
         <div class="figure elem" id="elem0"></div>
@@ -101,6 +103,7 @@
         <div class="figure elem" id="elem1"></div>
         <figcaption>回転後（<span class="tex" data-tex="x'y'z'"></span>。点線は回転前の要素）</figcaption>
       </figure>
+    </div>
     </div>
     <p class="hint">実線の矢印は正の面（外向き法線が軸の正の向き）、点線は負の面の応力。赤は引張・青は圧縮・緑はせん断で、長さは応力の大きさに比例します（回転前後で同じ縮尺）。</p>
     <div class="mat-pair">

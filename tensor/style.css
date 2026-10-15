@@ -90,6 +90,16 @@
 }
 
 /* 対称でない入力 */
-#cust-warn { padding: 8px 12px; border-left: 4px solid var(--accent-strong); background: #fdeee9; border-radius: 8px; line-height: 1.7; }
+.warn-box { padding: 8px 12px; border-left: 4px solid var(--accent-strong); background: #fdeee9; border-radius: 8px; line-height: 1.7; }
 .cust-grid input.bad { border-color: var(--accent-strong); background: #fdeee9; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 対称でない行列: 微小要素の図の上に大きく注意を重ねる（図はそのまま見せ、ドラッグも通す） */
+.elem-stage { position: relative; }
+.elem-warn {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 16px; text-align: center; color: var(--accent-strong);
+}
+.elem-warn > b { font-size: clamp(1.4rem, 3.2vw, 2.2rem); letter-spacing: 0.04em; border: 3px solid currentColor; border-radius: 12px; padding: 6px 18px; background: #fffdf7e6; transform: rotate(-4deg); }
+.elem-warn > span { font-size: 0.92rem; max-width: 28em; background: #fffdf7e6; border-radius: 8px; padding: 4px 10px; }
