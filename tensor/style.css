@@ -1,0 +1,114 @@
+/* tensor/ 単元だけの追加（土台は ../equilibrium/style.css） */
+
+.lab {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-areas:
+    "rod   elem"
+    "plot  notes";
+}
+.rod-card { grid-area: rod; }
+.elem-card { grid-area: elem; }
+.plot-card { grid-area: plot; }
+.notes-card { grid-area: notes; }
+@media (max-width: 1100px) {
+  .lab { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rod" "elem" "plot" "notes"; }
+}
+
+.qtext {
+  font-size: 0.86rem;
+  line-height: 1.75;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-left: 4px solid var(--accent-soft);
+  background: #fdf6ef;
+  border-radius: 8px;
+}
+.qtext:empty { display: none; }
+.qtext .note { display: block; color: var(--muted); font-size: 0.76rem; margin-top: 4px; }
+
+.hint { color: var(--muted); font-size: 0.74rem; line-height: 1.6; margin: 6px 0 12px; }
+
+.figure3d svg { display: block; width: 100%; height: auto; touch-action: none; overflow: visible; cursor: grab; }
+.figure3d.dragging svg { cursor: grabbing; }
+#rod svg { aspect-ratio: 2 / 1; }
+.elem svg { aspect-ratio: 1 / 1; }
+.fig-label { font-size: 15px; }
+
+/* 荷重の行 */
+.load-row { --c: var(--accent); }
+.load-row.off { opacity: 0.55; border-left-color: var(--line-solid); }
+.load-row .sym { min-width: 1.6em; font-size: 1rem; color: var(--c); }
+.load-row .lf input[type="number"] { width: 4.8rem; }
+.load-row .val { margin-left: auto; font-size: 0.74rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.pt-grid { display: grid; gap: 6px; margin: 12px 0 8px; }
+.pt-grid .lf { display: grid; grid-template-columns: 4.4rem minmax(0, 1fr) 3rem; align-items: center; }
+.pt-grid input[type="range"] { width: 100%; accent-color: var(--accent); }
+.pt-grid output { font-size: 0.78rem; text-align: right; font-variant-numeric: tabular-nums; }
+.geom-row { align-items: center; }
+.pt-tex { margin-left: auto; font-size: 0.9rem; }
+
+.cust-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; max-width: 360px; }
+.cust-grid input {
+  width: 100%; min-width: 0;
+  border: 1px solid var(--line-solid); border-radius: 8px; background: #fffefa;
+  padding: 5px 7px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.cust-grid input.diag { background: #fdf3ec; }
+.cust-grid input.bad { outline: 2px solid var(--accent); }
+
+/* 回転 */
+.angles { display: grid; gap: 6px; margin-bottom: 10px; }
+.ang-row { display: grid; gap: 6px; }
+.ang-row .lf { display: grid; grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem 1em; align-items: center; }
+.ang-row input[type="range"] { width: 100%; accent-color: var(--accent); }
+.ang-row input[type="number"] { width: 100%; }
+.seg { display: inline-flex; }
+.seg .seg-btn { border-radius: 0; padding: 5px 11px; }
+.seg .seg-btn:first-child { border-radius: 999px 0 0 999px; }
+.seg .seg-btn:last-child { border-radius: 0 999px 999px 0; border-left: 0; }
+.seg .seg-btn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.elem-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.elem-pair figure { margin: 0; min-width: 0; }
+.elem-pair figcaption { font-size: 0.76rem; color: var(--muted); text-align: center; margin-top: 4px; }
+
+.mat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mat { min-width: 0; overflow-x: auto; }
+.mat .cap { font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
+.mat table { border-collapse: separate; border-spacing: 3px; margin: 0 auto; }
+.mat td {
+  min-width: 4.2em; padding: 6px 6px; text-align: right; border-radius: 6px;
+  font-variant-numeric: tabular-nums; font-size: 0.82rem;
+  transition: background-color 0.1s;
+}
+.mat td small { display: block; color: var(--muted); font-size: 0.66rem; text-align: left; }
+
+/* グラフ */
+.plot svg, .mohr svg { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+.plot svg { aspect-ratio: 16 / 8; }
+.mohr svg { aspect-ratio: 16 / 9; cursor: default; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 14px; font-size: 0.82rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+.legend .now { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.76rem; }
+.h3 { font-family: var(--display-font); font-weight: 400; font-size: 1.05rem; margin: 6px 0 2px; }
+
+/* 式 */
+.formula h3 { font-family: var(--display-font); font-weight: 400; font-size: 1.02rem; margin: 0 0 6px; }
+.formula p { font-size: 0.82rem; line-height: 1.7; margin: 6px 0; }
+.formula .eq { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.formula .eq .katex-display { margin: 6px 0; text-align: left; }
+.formula .eq .katex-display > .katex { text-align: left; }
+.formula .step { font-size: 0.74rem; color: var(--accent-strong); font-weight: 700; letter-spacing: 0.06em; margin-top: 10px; }
+.formula .ok { color: var(--green); }
+
+.site-foot .share-row { max-width: 720px; }
+
+@media (max-width: 760px) {
+  .elem-pair, .mat-pair { gap: 6px; }
+  .fig-label { font-size: 12px; }
+  .ang-row .lf, .pt-grid .lf { grid-template-columns: 3.6rem minmax(0, 1fr) 3.6rem 1em; }
+  .pt-grid .lf { grid-template-columns: 3.6rem minmax(0, 1fr) 2.6rem; }
+  .mat td { min-width: 3.2em; font-size: 0.72rem; padding: 4px; }
+}

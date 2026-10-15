@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>応力テンソルと座標変換 — 丸棒の応力状態</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<!-- 見た目は「力とモーメントのつり合い」と同じテーマ。この単元だけの追加は style.css に -->
+<link rel="stylesheet" href="../equilibrium/style.css">
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+</head>
+<body>
+
+<header class="site-head">
+  <a class="home-link" href="../index.html">← sm-lab トップへ</a>
+  <h1>応力テンソルと座標変換</h1>
+  <p class="lede">一端を固定した丸棒に引張・ねじり・曲げ・横荷重を加え、ある点の応力テンソルを求めます。微小要素を回して成分がどう変わるか、主応力（固有値）でせん断が消えるところまで確かめられます。弾性力学テキストの演習 1.2 に対応しています。</p>
+</header>
+
+<main class="lab">
+
+  <!-- ------------------------------------------------ 丸棒と荷重 -->
+  <section class="card rod-card">
+    <p class="kicker">Problem</p>
+    <h2 id="rod-title">丸棒と荷重</h2>
+    <div class="toolbar">
+      <label class="seg-label" for="preset">問題</label>
+      <select id="preset"></select>
+    </div>
+    <div class="qtext" id="qtext"></div>
+
+    <div data-mode="load">
+      <div class="figure" id="rod"></div>
+      <p class="hint">図をドラッグすると視点が回ります（右の微小要素の図と連動）。紫の小さな立方体が、いま見ている点の微小要素です。</p>
+      <div class="load-list" id="loads"></div>
+      <div class="pt-grid">
+        <label class="lf"><span class="tex" data-tex="x/L"></span>
+          <input id="xi" type="range" min="0" max="1" step="0.05"><output id="xi-o"></output></label>
+        <label class="lf"><span class="tex" data-tex="y/(D/2)"></span>
+          <input id="eta" type="range" min="-1" max="1" step="0.05"><output id="eta-o"></output></label>
+        <label class="lf"><span class="tex" data-tex="z/(D/2)"></span>
+          <input id="zeta" type="range" min="-1" max="1" step="0.05"><output id="zeta-o"></output></label>
+      </div>
+      <div class="toolbar toolbar-tight geom-row">
+        <label class="lf"><span class="tex" data-tex="D"></span><input id="D" type="number" min="1" step="1"><span class="u">mm</span></label>
+        <label class="lf"><span class="tex" data-tex="L"></span><input id="L" type="number" min="1" step="10"><span class="u">mm</span></label>
+        <span class="pt-tex" id="pt-tex"></span>
+      </div>
+    </div>
+
+    <div data-mode="custom" hidden>
+      <p class="sub">成分を直接入力します（単位 MPa）。応力テンソルは対称行列になるはずなので、対称でないときは注意を出します。</p>
+      <div class="cust-grid" id="cust"></div>
+      <label class="check"><input type="checkbox" id="cust-sym" checked>対称に保つ（右上を入力すると左下も変わる）</label>
+      <div class="err" id="cust-warn" hidden></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ 微小要素 -->
+  <section class="card elem-card">
+    <p class="kicker">Rotation</p>
+    <h2>微小要素の回転</h2>
+    <div class="toolbar">
+      <label class="seg-label" for="rmode">回し方</label>
+      <select id="rmode">
+        <option value="axis">座標軸まわりに角度 θ</option>
+        <option value="euler">フリー回転（z → y′ → x″ の順）</option>
+      </select>
+      <select id="axis" aria-label="回転軸">
+        <option value="x">x 軸まわり</option>
+        <option value="y">y 軸まわり</option>
+        <option value="z">z 軸まわり</option>
+      </select>
+      <button class="btn btn-accent play" id="play" type="button" aria-pressed="false"><span class="icon" aria-hidden="true">▶</span><span class="lbl">回す</span></button>
+    </div>
+    <div class="angles">
+      <div class="ang-row" data-r="axis">
+        <label class="lf"><span class="tex" data-tex="\theta"></span>
+          <input id="th" type="range" min="-180" max="180" step="1"><input id="th-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+      </div>
+      <div class="ang-row" data-r="euler" hidden>
+        <label class="lf"><span class="tex" data-tex="\alpha\ (z)"></span>
+          <input id="eu0" type="range" min="-180" max="180" step="1"><input id="eu0-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+        <label class="lf"><span class="tex" data-tex="\beta\ (y')"></span>
+          <input id="eu1" type="range" min="-90" max="90" step="1"><input id="eu1-n" type="number" min="-90" max="90" step="1"><span class="u">°</span></label>
+        <label class="lf"><span class="tex" data-tex="\gamma\ (x'')"></span>
+          <input id="eu2" type="range" min="-180" max="180" step="1"><input id="eu2-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+      </div>
+    </div>
+    <div class="toolbar toolbar-tight">
+      <button class="btn" id="reset-rot" type="button">回転を 0 に</button>
+      <button class="btn btn-accent" id="to-principal" type="button">主軸へ回す</button>
+      <span class="seg-label">ドラッグで</span>
+      <div class="seg" role="group" aria-label="ドラッグの働き">
+        <button class="btn seg-btn" data-drag="view" type="button">視点を回す</button>
+        <button class="btn seg-btn" data-drag="elem" type="button">要素を回す</button>
+      </div>
+    </div>
+
+    <div class="elem-pair">
+      <figure>
+        <div class="figure elem" id="elem0"></div>
+        <figcaption>回転前（<span class="tex" data-tex="xyz"></span>）</figcaption>
+      </figure>
+      <figure>
+        <div class="figure elem" id="elem1"></div>
+        <figcaption>回転後（<span class="tex" data-tex="x'y'z'"></span>。点線は回転前の要素）</figcaption>
+      </figure>
+    </div>
+    <p class="hint">実線の矢印は正の面（外向き法線が軸の正の向き）、点線は負の面の応力。赤は引張・青は圧縮・緑はせん断で、長さは応力の大きさに比例します（回転前後で同じ縮尺）。</p>
+    <div class="mat-pair">
+      <div class="mat" id="mat0"></div>
+      <div class="mat" id="mat1"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ 成分の変化 -->
+  <section class="card plot-card">
+    <p class="kicker">Components</p>
+    <h2>回転による成分の変化</h2>
+    <p class="sub" id="plot-sub">横軸は回転角。グラフをクリック・ドラッグすると角度を選べます。</p>
+    <div class="figure plot" id="plot"></div>
+    <div class="legend" id="legend"></div>
+    <h3 class="h3">モールの応力円</h3>
+    <p class="sub" id="mohr-sub"></p>
+    <div class="figure mohr" id="mohr"></div>
+  </section>
+
+  <!-- ------------------------------------------------ 式 -->
+  <section class="card notes-card">
+    <p class="kicker">Formulas</p>
+    <h2>計算の流れ（文字式 → 最後に数値）</h2>
+    <div class="formula" id="f-tensor"></div>
+    <div class="formula" id="f-rot"></div>
+    <div class="formula" id="f-eig"></div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="share-row">
+    <input id="share-url" type="text" readonly aria-label="この設定のURL">
+    <button class="btn" id="share-copy" type="button">URL をコピー</button>
+  </div>
+</footer>
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
