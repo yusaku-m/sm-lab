@@ -257,6 +257,20 @@ function syncInputs(opts = {}) {
     custInputs[c].disabled = state.customSym && ['yx', 'zx', 'zy'].includes(c);
   }
   $('cust-sym').checked = state.customSym;
+  // 対称でない組を入力欄のそばで知らせる（式の欄の判定だけだと下まで読まないと気づかない）
+  const bad = [['xy', 'yx'], ['yz', 'zy'], ['zx', 'xz']].filter(([a, b]) => {
+    const m = Math.max(1, ...Mdl.COMP.map((c) => Math.abs(state.custom[c])));
+    return Math.abs(state.custom[a] - state.custom[b]) > 1e-9 * m;
+  });
+  for (const c of Mdl.COMP) custInputs[c].classList.toggle('bad', bad.some((pr) => pr.includes(c)));
+  const warn = $('cust-warn');
+  warn.hidden = state.mode !== 'custom' || !bad.length;
+  warn.innerHTML = bad.length
+    ? `対称ではありません（${bad.map(([a, b]) => tx(`\\sigma_{${a}}\\ne\\sigma_{${b}}`)).join('，')}）。微小直方体のモーメントのつり合いから ${tx('\\sigma_{ij}=\\sigma_{ji}')} が必要なので、この行列は応力テンソルになり得ません。主応力・応力円は求めません。`
+    : '';
+  const canPrincipal = state.mode !== 'custom' || !bad.length;
+  $('to-principal').disabled = !canPrincipal;
+  $('to-principal').title = canPrincipal ? '' : '対称でない行列には主軸がありません';
 
   const r = state.rot;
   $('rmode').value = r.mode;

@@ -88,3 +88,8 @@
   .pt-grid .lf { grid-template-columns: 3.6rem minmax(0, 1fr) 2.6rem; }
   .mat td { min-width: 3.2em; font-size: 0.72rem; padding: 4px; }
 }
+
+/* 対称でない入力 */
+#cust-warn { padding: 8px 12px; border-left: 4px solid var(--accent-strong); background: #fdeee9; border-radius: 8px; line-height: 1.7; }
+.cust-grid input.bad { border-color: var(--accent-strong); background: #fdeee9; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
