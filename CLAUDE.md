@@ -63,9 +63,12 @@ URLも1つで済む（2026-07-17、ユーザーと相談の上この方針に決
 ## 構成
 
 ```
-index.html        # トップページ（単元一覧）。common/style.cssを読み込むだけ
+index.html        # トップページ（単元一覧）。home.css・home.jsを読む（common/style.cssは読まない）
+home.css          # トップページ専用テーマ（mohr/style.cssの配色・フォント・カード）。カードは grid-auto-rows: 1fr で全部同じ大きさ
+home.js           # トップページのサムネイル（各単元の図を簡略化したSVGをJSで毎フレーム描き直すアニメーション。
+                  #   準備中の単元は静止画。画面外は描かない・prefers-reduced-motionなら静止）。単元を足したら DRAW に描画関数を足す
 common/
-  style.css        # 全単元共通スタイル。新しい単元を追加するときはこれを読み込むだけで見た目が揃う
+  style.css        # beam/ 用のスタイル（2026-10-16、配色・フォントを mohr/ のテーマに揃えた）
 py/
   quiz_web/        # 全単元共通の力学エンジン（Gradingからvendoring、無改造コピー。詳細は上記）
     __init__.py
@@ -109,7 +112,7 @@ tensor/             # 「応力テンソルと座標変換」単元（弾性力�
 - `worker.js`の`../py/quiz_web/`参照・`common/style.css`参照は`beam/`のものをそのまま踏襲できる
   （相対パスの深さが同じなら）
 - `py/quiz_web/`に新しく必要なモジュール（`Rod.py`等）をGradingから無改造vendoringする
-- ルートの`index.html`の`.unit-list`に新しいunit-cardを追加してリンクする
+- ルートの`index.html`の`.unit-list`に新しいunit-card（`.thumb[data-thumb]`＋`.unit-body`）を追加してリンクし、`home.js`にサムネイルの描画関数を足す
 - **JS側の共通処理**（Pyodideのworker起動・KaTeXオーバーレイ描画・デバウンス）が2単元目以降で
   重複してきたら、そこで初めて`common/`にJSとして切り出す（1単元目の現時点ではまだ切り出して
   いない — 早すぎる抽象化を避けるため）

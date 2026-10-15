@@ -4,58 +4,88 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sm-lab — 材料力学の学習プレイグラウンド</title>
-<link rel="stylesheet" href="common/style.css">
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
-<header>
+<header class="site-head">
+  <p class="kicker">Strength of materials lab</p>
   <h1>sm-lab</h1>
-  <p>材料力学の各単元を、実際の計算エンジンをブラウザ上でそのまま動かしながら学べる学習ツール集。支点・荷重などの条件を自由に変えると、計算過程の解説つきで結果がその場で再計算されます。</p>
+  <p class="lede">材料力学の各単元を、実際の計算エンジンをブラウザ上でそのまま動かしながら学べる学習ツール集。支点・荷重などの条件を自由に変えると、計算過程の解説つきで結果がその場で再計算されます。</p>
 </header>
-<main style="display:block">
+<main>
   <ul class="unit-list">
     <li>
       <a class="unit-card" href="equilibrium/index.html">
-        <h2>力とモーメントのつり合い</h2>
-        <p>棒に荷重を置き、力の和と点Oまわりのモーメントのつり合いから反力を求める（ピン支持／自由体）</p>
+        <div class="thumb" data-thumb="equilibrium" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Free body</p>
+          <h2>力とモーメントのつり合い</h2>
+          <p>棒に荷重を置き、力の和と点Oまわりのモーメントのつり合いから反力を求める（ピン支持／自由体）</p>
+        </div>
       </a>
     </li>
     <li>
       <a class="unit-card" href="beam/index.html">
-        <h2>梁（曲げ）</h2>
-        <p>支点・荷重を自由配置 → 反力・SFD・BMDを計算</p>
+        <div class="thumb" data-thumb="beam" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Beam</p>
+          <h2>梁（曲げ）</h2>
+          <p>支点・荷重を自由配置 → 反力・SFD・BMDを計算</p>
+        </div>
       </a>
     </li>
     <li>
       <a class="unit-card" href="sfd-bmd/index.html">
-        <h2>SFD・BMD</h2>
-        <p>仮想断面を左から右へ動かし、せん断力 V と曲げモーメント M が変わっていく様子を見る</p>
+        <div class="thumb" data-thumb="sfdbmd" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Beam &amp; diagrams</p>
+          <h2>SFD・BMD</h2>
+          <p>仮想断面を左から右へ動かし、せん断力 V と曲げモーメント M が変わっていく様子を見る</p>
+        </div>
       </a>
     </li>
     <li>
-      <a class="unit-card disabled" href="#" tabindex="-1">
-        <h2>引張・圧縮変形</h2>
-        <p>準備中</p>
+      <a class="unit-card disabled" href="#" tabindex="-1" aria-disabled="true">
+        <div class="thumb" data-thumb="axial" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Axial load</p>
+          <h2>引張・圧縮変形<span class="badge">準備中</span></h2>
+          <p>棒に軸荷重を加えたときの応力と伸び・縮み</p>
+        </div>
       </a>
     </li>
     <li>
-      <a class="unit-card disabled" href="#" tabindex="-1">
-        <h2>ねじり変形</h2>
-        <p>準備中</p>
+      <a class="unit-card disabled" href="#" tabindex="-1" aria-disabled="true">
+        <div class="thumb" data-thumb="torsion" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Torsion</p>
+          <h2>ねじり変形<span class="badge">準備中</span></h2>
+          <p>丸棒にねじりモーメントを加えたときのせん断応力とねじれ角</p>
+        </div>
       </a>
     </li>
     <li>
       <a class="unit-card" href="mohr/index.html">
-        <h2>モールの応力円</h2>
-        <p>丸棒（引張・曲げ・ねじり）や薄肉圧力容器（球殻・円筒殻）の任意の点、ロゼットゲージを貼った微小平板の応力円を見る</p>
+        <div class="thumb" data-thumb="mohr" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Mohr's circle</p>
+          <h2>モールの応力円</h2>
+          <p>丸棒（引張・曲げ・ねじり）や薄肉圧力容器（球殻・円筒殻）の任意の点、ロゼットゲージを貼った微小平板の応力円を見る</p>
+        </div>
       </a>
     </li>
     <li>
       <a class="unit-card" href="tensor/index.html">
-        <h2>応力テンソルと座標変換</h2>
-        <p>丸棒（引張・ねじり・曲げ・横荷重）の点の応力テンソルを求め、微小要素を回したときの成分の変化と主応力（固有値）を見る（弾性力学 演習1.2）</p>
+        <div class="thumb" data-thumb="tensor" aria-hidden="true"></div>
+        <div class="unit-body">
+          <p class="kicker">Rotation</p>
+          <h2>応力テンソルと座標変換</h2>
+          <p>丸棒（引張・ねじり・曲げ・横荷重）の点の応力テンソルを求め、微小要素を回したときの成分の変化と主応力（固有値）を見る（弾性力学 演習1.2）</p>
+        </div>
       </a>
     </li>
   </ul>
 </main>
+<script src="home.js"></script>
 </body>
 </html>

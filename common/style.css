@@ -5,19 +5,73 @@
   /* 図（SVG）が黒線・白背景前提で描かれているため、端末のダーク設定に
      関わらず常にライトテーマで固定する（ダークだと図が見えなくなるため）。 */
   color-scheme: light only;
-  --border: #ccc;
-  --bg-soft: #f5f5f5;
+  /* 配色・フォントは mohr/style.css と同じ（トップページ・他の単元と見た目を揃える） */
+  --ink: #1d2932;
+  --muted: #627078;
+  --paper: #fffdf7;
+  --line: #1d293226;
+  --line-solid: #ddd7ca;
+  --accent: #ef6a4b;
+  --accent-strong: #bd442c;
+  --accent-soft: #ffac92;
+  --border: var(--line-solid);
+  --bg-soft: #f6f1e7;
+  --display-font: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --body-font: Inter, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+}
+html {
+  background:
+    radial-gradient(circle at 14% 22%, #ef6a4b1a, #0000 26%),
+    linear-gradient(135deg, #f9f6ee 0%, #f1eee5 100%);
+  background-attachment: fixed;
 }
 body {
-  font-family: "Meiryo", "Yu Gothic", "Noto Sans JP", sans-serif;
+  font-family: var(--body-font);
   margin: 0;
-  padding: 0 1rem 3rem;
-  background: #fff;
-  color: #111;
+  padding: 0 clamp(12px, 3vw, 32px) 3rem;
+  min-height: 100vh;
+  color: var(--ink);
 }
-header { padding: 1rem 0 0.5rem; }
-header p { color: #888; margin: 0.2rem 0 0; font-size: 0.9rem; }
-.home-link { font-size: 0.85rem; }
+::selection { color: var(--paper); background: var(--accent-strong); }
+header { padding: 28px 4px 20px; }
+header h1 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+header p { color: var(--muted); margin: 10px 0 0; font-size: 0.92rem; line-height: 1.7; }
+header p.home-link { margin: 0 0 14px; }
+.home-link, .home-link a { font-size: 0.82rem; letter-spacing: 0.04em; color: var(--muted); text-decoration: none; }
+.home-link a:hover { color: var(--accent-strong); }
+
+/* カード・フォーム部品（mohr/style.css と同じ見た目） */
+section#controls h2, .fig-block h2 {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 1.12rem;
+}
+button, select, input { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--line-solid);
+  background: #fffefa;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+button:hover { border-color: var(--accent-soft); }
+#add-support, #add-load { border-color: var(--accent-soft); background: #fdf0ea; color: var(--accent-strong); font-weight: 600; font-family: var(--body-font); }
+select, input[type=number] {
+  border: 1px solid var(--line-solid);
+  background: #fffefa;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+select:focus, input:focus { outline: 2px solid var(--accent-soft); outline-offset: 0; }
+label { color: var(--muted); }
 
 main {
   display: grid;
@@ -31,11 +85,11 @@ main {
 section#controls {
   position: sticky;
   top: 0.5rem;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.8rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 24px 70px #1c242c14;
   z-index: 10;
   max-height: calc(100vh - 1rem);
   overflow-y: auto;
@@ -74,7 +128,8 @@ section#controls.collapsed {
 }
 .support-item, .load-item {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  background: #fffefa;
+  border-radius: 12px;
   padding: 0.35rem;
   min-width: 0;
 }
@@ -90,13 +145,15 @@ section#controls.collapsed {
 label { font-size: 0.85rem; }
 input[type=number] { width: 100%; box-sizing: border-box; }
 #status { margin-top: 0.8rem; font-size: 0.85rem; min-height: 1.2em; }
-#status.error { color: #c0392b; white-space: pre-wrap; }
-#status.busy { color: #888; }
+#status.error { color: var(--accent-strong); white-space: pre-wrap; }
+#status.busy { color: var(--muted); }
 
 .fig-block {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.8rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px #1c242c14;
+  padding: 0.9rem 1rem;
   margin-bottom: 1.2rem;
   overflow: visible;
 }
@@ -131,24 +188,3 @@ input[type=number] { width: 100%; box-sizing: border-box; }
 .explanation p { margin: 0.35em 0; line-height: 1.6; }
 .explanation { margin-top: 0.6rem; font-size: 0.92rem; }
 button { cursor: pointer; }
-
-/* トップページ（単元一覧）用 */
-.unit-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
-  padding: 0;
-  margin: 1.5rem 0 0;
-  list-style: none;
-}
-.unit-card {
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
-  text-decoration: none;
-  color: inherit;
-}
-.unit-card h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
-.unit-card p { margin: 0; font-size: 0.85rem; color: #888; }
-.unit-card.disabled { opacity: 0.5; pointer-events: none; }
