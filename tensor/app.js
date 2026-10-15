@@ -13,45 +13,20 @@ const DIRS = {
 const LOAD_NAME = { P: '軸荷重', T: 'ねじり', M: '曲げ', F: '横荷重' };
 const LOAD_COLOR = { P: COLORS.load, T: COLORS.moment, M: COLORS.moment, F: COLORS.load };
 
-// ---------------------------------------------------------------- 演習 1.2 の各問
-// loads の値は向き（+1 / −1）。問題文の「各作用は対象の点の応力成分が正となる方向」に合わせてある。
-const Q = (n, text, loads, pt, extra = {}) => ({ id: String(n), label: `演習 1.2.${n}`, text, loads, pt, ...extra });
-const PRESETS = [
-  Q(1, '自由端に $x$ 軸方向への引張荷重 $P$ が作用している。点 $(\\frac{L}{2},0,0)$ の応力テンソル $\\bm\\sigma$ は？', { P: 1 }, [0.5, 0, 0]),
-  Q(2, '1.2.1 において，点 $(\\frac{L}{2},\\frac{D}{2},0)$ の応力テンソルは？', { P: 1 }, [0.5, 1, 0]),
-  Q(3, '自由端に $x$ 軸を中心軸としたねじりモーメント $T$ が作用している。点 $(\\frac{L}{2},0,0)$ の応力テンソルは？', { T: 1 }, [0.5, 0, 0]),
-  Q(4, '1.2.3 において，点 $(\\frac{L}{2},0,\\frac{D}{2})$ の応力テンソルは？', { T: 1 }, [0.5, 0, 1]),
-  Q(5, '自由端に $z$ 軸を中心軸とした曲げモーメント $M$ が作用している。点 $(\\frac{L}{2},0,0)$ の応力テンソルは？', { M: 1 }, [0.5, 0, 0]),
-  Q(6, '1.2.5 において，点 $(\\frac{L}{2},0,\\frac{D}{2})$ の応力テンソルは？', { M: 1 }, [0.5, 0, 1]),
-  Q(7, '1.2.5 において，点 $(\\frac{L}{2},\\frac{D}{2},0)$ の応力テンソルは？', { M: 1 }, [0.5, 1, 0]),
-  Q(8, '自由端に引張荷重 $P$ とねじりモーメント $T$ が作用している。点 $(\\frac{L}{2},\\frac{D}{2},0)$ の応力テンソルは？', { P: 1, T: -1 }, [0.5, 1, 0],
-    { note: 'この点で $\\sigma_{xz}$ が正になる向き（$-x$ まわり）に $T$ をとっています。1.2.4 とは $T$ の向きが逆です。' }),
-  Q(9, '1.2.7 と同じ向きの曲げモーメント $M$ が作用している。点 $(\\frac{L}{2},-\\frac{D}{2},0)$ の応力テンソルは？', { M: 1 }, [0.5, -1, 0]),
-  Q(10, '自由端に曲げモーメント $M$ とねじりモーメント $T$ が作用している。点 $(\\frac{L}{2},\\frac{D}{2},0)$ の応力テンソルは？', { M: 1, T: -1 }, [0.5, 1, 0],
-    { note: '$T$ の向きは 1.2.8 と同じ（$-x$ まわり）です。' }),
-  Q(11, '自由端に $y$ 軸の負の向きの荷重 $F$ が作用している。点 $(\\frac{L}{2},0,0)$ の応力テンソルは？', { F: 1 }, [0.5, 0, 0],
-    { note: 'せん断応力は材料力学の分布（中立軸で最大の $\\frac{4F}{3A}$）とします。' }),
-  Q(12, '1.2.11 において，点 $(\\frac{L}{2},\\frac{D}{2},0)$ の応力テンソルは？', { F: 1 }, [0.5, 1, 0]),
-  { id: '13', label: '演習 1.2.13', text: '$\\sigma_{xx}$，$\\sigma_{yy}$，$\\sigma_{xy}$ だけをもつ応力テンソルを $z$ 軸まわりに $\\theta$ 回すと？（モールの応力円と比べる）',
-    note: '数値は例です。左の成分を書き換えて試せます。', custom: { xx: 80, yy: -20, xy: 30, yx: 30 }, rot: { mode: 'axis', axis: 'z', th: 30 } },
-  Q(14, '1.2.11 の点の応力テンソルを，$z$ 軸まわりに $45^\\circ$ 回転した $x\'y\'z\'$ 座標系で表すと？', { F: 1 }, [0.5, 0, 0], { rot: { mode: 'axis', axis: 'z', th: 45 } }),
-  { id: '15a', label: '演習 1.2.15 (a)', text: '次の行列は応力テンソルになり得るか（単位 MPa）。', custom: { xx: 50, xy: 30, yx: -30, yy: -20, zz: 10 }, sym: false },
-  { id: '15b', label: '演習 1.2.15 (b)', text: '次の行列は応力テンソルになり得るか（単位 MPa）。', custom: { xx: -40, xz: 20, zx: 20, zz: 60 } },
-];
-const PRESET_BY_ID = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
-
 // ---------------------------------------------------------------- 状態
 const zeroCustom = () => Object.fromEntries(Mdl.COMP.map((c) => [c, 0]));
-const state = {
-  preset: '7',
+// 演習 1.2 の各問は専用の選択肢を持たず、URL ハッシュ（ld/pt/c/th など）だけで再現する。
+// 既定（ハッシュが空）は曲げ M による点 (L/2, D/2, 0)。ハッシュで省略したキーはここへ戻す。
+const defaultState = () => ({
   mode: 'load',
   geom: { D: 20, L: 200 },
-  loads: Object.fromEntries(Mdl.LOAD_KEYS.map((k) => [k, { on: false, mag: DEF_MAG[k], s: 1 }])),
+  loads: Object.fromEntries(Mdl.LOAD_KEYS.map((k) => [k, { on: k === 'M', mag: DEF_MAG[k], s: 1 }])),
   pt: { xi: 0.5, eta: 1, zeta: 0 },
   custom: zeroCustom(),
   customSym: true,
   rot: { mode: 'axis', axis: 'z', th: 0, eu: [0, 0, 0], sweep: 0 },
-};
+});
+const state = defaultState();
 const camera = new Camera();
 let playing = false, playLast = 0, tween = null, hashTimer = 0, lastHash = '', formulaTimer = 0;
 
@@ -63,9 +38,6 @@ function tx(tex, display = false) {
   return K() ? K().renderToString(tex, { displayMode: display, throwOnError: false }) : tex;
 }
 const eq = (tex) => `<div class="eq">${tx(tex, true)}</div>`;
-function inlineTex(s) { // "文 $数式$ 文" → HTML
-  return s.split('$').map((p, i) => (i % 2 ? tx(p) : p.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])))).join('');
-}
 const matTex = (rows) => `\\begin{bmatrix}${rows.map((r) => r.join(' & ')).join(' \\\\ ')}\\end{bmatrix}`;
 const numMat = (S, d = 4) => matTex(S.map((r) => r.map((v) => Mdl.fmt(v, d))));
 
@@ -99,9 +71,8 @@ function rotQ() {
 }
 
 // ---------------------------------------------------------------- UI の組み立て
-const presetSel = $('preset');
-presetSel.innerHTML = '<option value="">自由設定（丸棒）</option><option value="custom">自由設定（テンソルを直接入力）</option>'
-  + PRESETS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
+const modeSel = $('mode');
+modeSel.innerHTML = '<option value="load">丸棒と荷重</option><option value="custom">応力テンソルを直接入力</option>';
 
 for (const el of document.querySelectorAll('.tex[data-tex]')) {
   if (K()) K().render(el.dataset.tex, el, { throwOnError: false });
@@ -165,11 +136,8 @@ $('cust-sym').addEventListener('change', (e) => {
   userEdit();
 });
 
-presetSel.addEventListener('change', () => {
-  const v = presetSel.value;
-  if (v === 'custom') { state.preset = ''; state.mode = 'custom'; }
-  else if (v === '') { state.preset = ''; state.mode = 'load'; }
-  else applyPreset(v);
+modeSel.addEventListener('change', () => {
+  state.mode = modeSel.value;
   render();
 });
 
@@ -263,38 +231,15 @@ function toPrincipal() {
   playLast = performance.now(); requestAnimationFrame(tick);
 }
 
-function applyPreset(id) {
-  const p = PRESET_BY_ID[id];
-  if (!p) return;
-  state.preset = id;
-  if (p.custom) {
-    state.mode = 'custom';
-    state.custom = { ...zeroCustom(), ...p.custom };
-    state.customSym = p.sym !== false;
-  } else {
-    state.mode = 'load';
-    for (const k of Mdl.LOAD_KEYS) {
-      const s = p.loads[k];
-      state.loads[k] = { on: !!s, mag: DEF_MAG[k], s: s || 1 };
-    }
-    [state.pt.xi, state.pt.eta, state.pt.zeta] = p.pt;
-  }
-  const r = p.rot || { mode: 'axis', axis: 'z', th: 0 };
-  state.rot.mode = r.mode; state.rot.axis = r.axis; state.rot.th = r.th; state.rot.eu = [0, 0, 0];
-}
-
 function userEdit(full = true) {
-  state.preset = '';
   render({ keepInputs: !full });
 }
 
 // ---------------------------------------------------------------- 描画: UI の値
 function syncInputs(opts = {}) {
-  presetSel.value = state.preset || (state.mode === 'custom' ? 'custom' : '');
+  modeSel.value = state.mode;
   for (const el of document.querySelectorAll('[data-mode]')) el.hidden = el.dataset.mode !== state.mode;
   $('rod-title').textContent = state.mode === 'custom' ? '応力テンソル（直接入力）' : '丸棒と荷重';
-  const p = PRESET_BY_ID[state.preset];
-  $('qtext').innerHTML = p ? `<b>${p.label}</b>　${inlineTex(p.text)}${p.note ? `<span class="note">${inlineTex(p.note)}</span>` : ''}` : '';
 
   for (const k of Mdl.LOAD_KEYS) {
     const row = loadRows[k], L = state.loads[k];
@@ -718,8 +663,7 @@ function renderFormulas(cur) {
 // ---------------------------------------------------------------- URL ハッシュ
 function buildHash() {
   const p = new URLSearchParams();
-  if (state.preset) p.set('q', state.preset);
-  else if (state.mode === 'custom') {
+  if (state.mode === 'custom') {
     p.set('m', 'c');
     p.set('c', Mdl.COMP.map((c) => +state.custom[c].toFixed(4)).join(','));
     if (!state.customSym) p.set('cs', '0');
@@ -740,15 +684,13 @@ function buildHash() {
 
 function applyHash(h) {
   const p = new URLSearchParams(h);
-  const q = p.get('q');
-  if (q && PRESET_BY_ID[q]) applyPreset(q);
-  else if (p.get('m') === 'c') {
-    state.preset = ''; state.mode = 'custom';
+  Object.assign(state, defaultState());
+  if (p.get('m') === 'c') {
+    state.mode = 'custom';
     const v = (p.get('c') || '').split(',').map(Number);
     Mdl.COMP.forEach((c, i) => { state.custom[c] = Number.isFinite(v[i]) ? v[i] : 0; });
     state.customSym = p.get('cs') !== '0';
   } else if (p.has('ld') || p.has('pt')) {
-    state.preset = ''; state.mode = 'load';
     for (const k of Mdl.LOAD_KEYS) state.loads[k] = { on: false, mag: DEF_MAG[k], s: 1 };
     for (const tok of (p.get('ld') || '').split(',')) {
       const m = tok.match(/^([PTMF])(-?)([\d.]+)$/);
@@ -762,7 +704,7 @@ function applyHash(h) {
     }
     if (+p.get('D') > 0) state.geom.D = +p.get('D');
     if (+p.get('L') > 0) state.geom.L = +p.get('L');
-  } else if (!q) applyPreset('7');
+  }
   if (p.has('eu')) {
     const v = p.get('eu').split(',').map(Number);
     if (v.length === 3 && v.every(Number.isFinite)) { state.rot.mode = 'euler'; state.rot.eu = v.map(wrap180); state.rot.eu[1] = Math.max(-90, Math.min(90, v[1])); }
