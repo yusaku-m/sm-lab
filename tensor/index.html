@@ -42,8 +42,8 @@
           <input id="zeta" type="range" min="-1" max="1" step="0.05"><output id="zeta-o"></output></label>
       </div>
       <div class="toolbar toolbar-tight geom-row">
-        <label class="lf"><span class="tex" data-tex="D"></span><input id="D" type="number" min="1" step="1"><span class="u">mm</span></label>
-        <label class="lf"><span class="tex" data-tex="L"></span><input id="L" type="number" min="1" step="10"><span class="u">mm</span></label>
+        <label class="lf"><span class="tex" data-tex="D"></span><input id="D" type="number" min="1" step="any"><span class="u">mm</span></label>
+        <label class="lf"><span class="tex" data-tex="L"></span><input id="L" type="number" min="1" step="any"><span class="u">mm</span></label>
         <span class="pt-tex" id="pt-tex"></span>
       </div>
     </div>
@@ -76,15 +76,15 @@
     <div class="angles">
       <div class="ang-row" data-r="axis">
         <label class="lf"><span class="tex" data-tex="\theta"></span>
-          <input id="th" type="range" min="-180" max="180" step="1"><input id="th-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+          <input id="th" type="range" min="-180" max="180" step="1"><input id="th-n" type="number" min="-180" max="180" step="any"><span class="u">°</span></label>
       </div>
       <div class="ang-row" data-r="euler" hidden>
         <label class="lf"><span class="tex" data-tex="\alpha\ (z)"></span>
-          <input id="eu0" type="range" min="-180" max="180" step="1"><input id="eu0-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+          <input id="eu0" type="range" min="-180" max="180" step="1"><input id="eu0-n" type="number" min="-180" max="180" step="any"><span class="u">°</span></label>
         <label class="lf"><span class="tex" data-tex="\beta\ (y')"></span>
-          <input id="eu1" type="range" min="-90" max="90" step="1"><input id="eu1-n" type="number" min="-90" max="90" step="1"><span class="u">°</span></label>
+          <input id="eu1" type="range" min="-90" max="90" step="1"><input id="eu1-n" type="number" min="-90" max="90" step="any"><span class="u">°</span></label>
         <label class="lf"><span class="tex" data-tex="\gamma\ (x'')"></span>
-          <input id="eu2" type="range" min="-180" max="180" step="1"><input id="eu2-n" type="number" min="-180" max="180" step="1"><span class="u">°</span></label>
+          <input id="eu2" type="range" min="-180" max="180" step="1"><input id="eu2-n" type="number" min="-180" max="180" step="any"><span class="u">°</span></label>
       </div>
     </div>
     <div class="toolbar toolbar-tight">

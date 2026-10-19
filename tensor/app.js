@@ -278,8 +278,8 @@ function syncInputs(opts = {}) {
   $('axis').value = r.axis;
   for (const el of document.querySelectorAll('[data-r]')) el.hidden = el.dataset.r !== r.mode;
   $('th').value = r.th;
-  if (opts.keepNum !== 'th-n') $('th-n').value = +r.th.toFixed(1);
-  r.eu.forEach((a, i) => { $(`eu${i}`).value = a; if (opts.keepNum !== `eu${i}-n`) $(`eu${i}-n`).value = +a.toFixed(1); });
+  if (opts.keepNum !== 'th-n') $('th-n').value = +r.th.toFixed(6);
+  r.eu.forEach((a, i) => { $(`eu${i}`).value = a; if (opts.keepNum !== `eu${i}-n`) $(`eu${i}-n`).value = +a.toFixed(6); });
 }
 
 // ---------------------------------------------------------------- 描画: 丸棒
@@ -691,8 +691,8 @@ function buildHash() {
   const r = state.rot;
   if (r.mode === 'axis') {
     if (r.axis !== 'z') p.set('ax', r.axis);
-    p.set('th', +r.th.toFixed(1));
-  } else p.set('eu', r.eu.map((a) => +a.toFixed(1)).join(','));
+    p.set('th', +r.th.toFixed(6));
+  } else p.set('eu', r.eu.map((a) => +a.toFixed(6)).join(','));
   return p.toString().replace(/%2C/g, ',');
 }
 

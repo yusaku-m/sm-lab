@@ -230,13 +230,13 @@ const POS_KEY = { pos: 't', t1: 't1', t2: 't2' };
 
 const LOAD_FIELDS = {
   point: () => `${posField('pos')}
-    <label class="lf"><span>大きさ</span><input data-f="P" type="number" min="0" max="${P_MAX}" step="0.5"><span class="u">kN</span></label>
+    <label class="lf"><span>大きさ</span><input data-f="P" type="number" min="0" max="${P_MAX}" step="any"><span class="u">kN</span></label>
     <label class="lf"><span>向き</span><select data-f="up"><option value="down">下向き</option><option value="up">上向き</option></select></label>`,
   moment: () => `${posField('pos')}
-    <label class="lf"><span>大きさ</span><input data-f="C" type="number" min="0" max="${C_MAX}" step="0.5"><span class="u">kN·m</span></label>
+    <label class="lf"><span>大きさ</span><input data-f="C" type="number" min="0" max="${C_MAX}" step="any"><span class="u">kN·m</span></label>
     <label class="lf"><span>向き</span><select data-f="sense"><option value="ccw">反時計まわり</option><option value="cw">時計まわり</option></select></label>`,
   dist: () => `${posField('t1', '始点')}${posField('t2', '終点')}
-    <label class="lf"><span>強さ</span><input data-f="w" type="number" min="0" max="${W_MAX}" step="0.5"><span class="u">kN/m</span></label>
+    <label class="lf"><span>強さ</span><input data-f="w" type="number" min="0" max="${W_MAX}" step="any"><span class="u">kN/m</span></label>
     <label class="lf"><span>形</span><select data-f="shape">${Object.entries(DIST_SHAPES).map(([k, s]) => `<option value="${k}">${s.label}</option>`).join('')}</select></label>
     <label class="lf"><span>向き</span><select data-f="up"><option value="down">下向き</option><option value="up">上向き</option></select></label>`,
 };
@@ -269,10 +269,10 @@ function syncLists() {
       setIfIdle(q(f), posText(a[key]));
       row.querySelector(`.pos-mm[data-mm="${f}"]`).textContent = `= ${fmt(a[key] * state.Lmm, 1)} mm`;
     }
-    if (a.type === 'point') { setIfIdle(q('P'), String(fmt(a.P, 2))); setIfIdle(q('up'), a.up ? 'up' : 'down'); }
-    if (a.type === 'moment') { setIfIdle(q('C'), String(fmt(Math.abs(a.C), 2))); setIfIdle(q('sense'), a.C >= 0 ? 'ccw' : 'cw'); }
+    if (a.type === 'point') { setIfIdle(q('P'), String(fmt(a.P, 6))); setIfIdle(q('up'), a.up ? 'up' : 'down'); }
+    if (a.type === 'moment') { setIfIdle(q('C'), String(fmt(Math.abs(a.C), 6))); setIfIdle(q('sense'), a.C >= 0 ? 'ccw' : 'cw'); }
     if (a.type === 'dist') {
-      setIfIdle(q('w'), String(fmt(a.w, 2)));
+      setIfIdle(q('w'), String(fmt(a.w, 6)));
       setIfIdle(q('shape'), a.shape);
       setIfIdle(q('up'), a.up ? 'up' : 'down');
     }
@@ -592,11 +592,11 @@ function buildHash() {
   const s = state.supports.map((x) => `${SUP_KEY[x.type]},${fmt(x.t, 6)}`).join(';');
   const a = state.loads.map((x) => {
     const k = LOAD_KEY[x.type];
-    if (x.type === 'point') return [k, fmt(x.t, 6), fmt(x.P, 3), x.up ? 1 : -1].join(',');
-    if (x.type === 'moment') return [k, fmt(x.t, 6), fmt(x.C, 3)].join(',');
-    return [k, fmt(x.t1, 6), fmt(x.t2, 6), fmt(x.w, 3), x.shape, x.up ? 1 : -1].join(',');
+    if (x.type === 'point') return [k, fmt(x.t, 6), fmt(x.P, 6), x.up ? 1 : -1].join(',');
+    if (x.type === 'moment') return [k, fmt(x.t, 6), fmt(x.C, 6)].join(',');
+    return [k, fmt(x.t1, 6), fmt(x.t2, 6), fmt(x.w, 6), x.shape, x.up ? 1 : -1].join(',');
   }).join(';');
-  return [`L=${fmt(state.Lmm, 3)}`, `s=${s || '-'}`, `a=${a || '-'}`, `x=${fmt(state.xs, 4)}`,
+  return [`L=${fmt(state.Lmm, 6)}`, `s=${s || '-'}`, `a=${a || '-'}`, `x=${fmt(state.xs, 4)}`,
     `g=${state.showGhost ? 1 : 0}`, `v=${state.showValues ? 1 : 0}`].join('&');
 }
 

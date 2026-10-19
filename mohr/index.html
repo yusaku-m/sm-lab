@@ -85,11 +85,11 @@
       </select>
       <span class="axis-fields" id="axis-fields" hidden>
         <span class="axis-field"><span class="tex" data-tex="\sigma"></span>
-          <input type="number" id="axis-smin" step="10"> 〜
-          <input type="number" id="axis-smax" step="10">
+          <input type="number" id="axis-smin" step="any"> 〜
+          <input type="number" id="axis-smax" step="any">
         </span>
         <span class="axis-field"><span class="tex" data-tex="\tau"></span> ±
-          <input type="number" id="axis-tmax" step="10">
+          <input type="number" id="axis-tmax" step="any">
         </span>
         <button class="btn" id="axis-grab" type="button">いまの範囲を取り込む</button>
       </span>
@@ -106,7 +106,7 @@
           </div>
           <div class="field-inputs">
             <input type="range" id="phi" min="-180" max="180" step="1" value="0">
-            <input type="number" id="phi-num" min="-180" max="180" step="1" value="0">
+            <input type="number" id="phi-num" min="-180" max="180" step="any" value="0">
           </div>
         </div>
         <div class="toolbar rotate-buttons">

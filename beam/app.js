@@ -161,7 +161,7 @@ function renderSupportsList() {
       posControl.type = "number";
       posControl.min = "0";
       posControl.max = "1";
-      posControl.step = "0.01";
+      posControl.step = "any";
       posControl.value = s.position;
       posControl.title = "位置（0=左端 〜 1=右端）";
       posControl.addEventListener("input", () => {
@@ -233,7 +233,7 @@ function renderLoadsList() {
 
     const magInput = document.createElement("input");
     magInput.type = "number";
-    magInput.step = "0.1";
+    magInput.step = "any";
     magInput.value = l.magnitude ?? 1;
     magInput.title = l.type === "point_moment" ? "大きさ (kN·m)" : (l.type === "distributed_load" ? "基準値 (kN/m)" : "大きさ (kN)");
     magInput.addEventListener("input", () => {
@@ -247,7 +247,7 @@ function renderLoadsList() {
       startInput.type = "number";
       startInput.min = "0";
       startInput.max = "1";
-      startInput.step = "0.01";
+      startInput.step = "any";
       startInput.value = l.start ?? 0;
       startInput.title = "開始位置（0-1）";
       startInput.addEventListener("input", () => {
@@ -260,7 +260,7 @@ function renderLoadsList() {
       endInput.type = "number";
       endInput.min = "0";
       endInput.max = "1";
-      endInput.step = "0.01";
+      endInput.step = "any";
       endInput.value = l.end ?? 1;
       endInput.title = "終了位置（0-1）";
       endInput.addEventListener("input", () => {
@@ -287,7 +287,7 @@ function renderLoadsList() {
       posInput.type = "number";
       posInput.min = "0";
       posInput.max = "1";
-      posInput.step = "0.01";
+      posInput.step = "any";
       posInput.value = l.position ?? 0.5;
       posInput.title = "位置（0-1）";
       posInput.addEventListener("input", () => {

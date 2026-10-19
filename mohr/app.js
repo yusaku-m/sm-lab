@@ -71,42 +71,42 @@ function buildHash() {
     const P = state.plate;
     q.set('k', 'plate');
     q.set('pm', P.mode);
-    if (P.mode === 's') q.set('ps', [P.s.sx, P.s.sy, P.s.txy].map((v) => round(v, 1)).join(','));
-    else q.set('pe', [P.e.ex, P.e.ey, P.e.gxy].map((v) => round(v, 0)).join(','));
-    q.set('pE', String(round(P.mat.E, 2))); // G から決めた E は端数が出るので 2 桁
-    q.set('pn', String(round(P.mat.nu, 3)));
+    if (P.mode === 's') q.set('ps', [P.s.sx, P.s.sy, P.s.txy].map((v) => round(v, 6)).join(','));
+    else q.set('pe', [P.e.ex, P.e.ey, P.e.gxy].map((v) => round(v, 6)).join(','));
+    q.set('pE', String(round(P.mat.E, 6)));
+    q.set('pn', String(round(P.mat.nu, 6)));
     if (!P.rosette) q.set('ro', '0'); // ロゼットを隠しているときだけ書く
   } else if (isVessel()) {
     q.set('k', state.model);
-    q.set('vp', String(round(state.vessel.p, 2)));
-    q.set('vr', String(round(state.vessel.r, 1)));
-    q.set('vt', String(round(state.vessel.t, 2)));
+    q.set('vp', String(round(state.vessel.p, 6)));
+    q.set('vr', String(round(state.vessel.r, 6)));
+    q.set('vt', String(round(state.vessel.t, 6)));
     const vp = vesselProbeUrl();
     if (vp) {
-      q.set('vu', String(round(vp.u, 1)));
-      q.set('vv', String(round(vp.v, 1)));
+      q.set('vu', String(round(vp.u, 6)));
+      q.set('vv', String(round(vp.v, 6)));
     }
   } else {
-    q.set('n', String(round(state.loads.N, 1)));
-    q.set('m', String(round(state.loads.M, 1)));
-    q.set('t', String(round(state.loads.T, 1)));
-    q.set('d', String(round(state.geom.d, 1)));
-    q.set('l', String(round(state.geom.L, 1)));
-    q.set('s', String(round(state.sectionT * 100, 1)));
+    q.set('n', String(round(state.loads.N, 6)));
+    q.set('m', String(round(state.loads.M, 6)));
+    q.set('t', String(round(state.loads.T, 6)));
+    q.set('d', String(round(state.geom.d, 6)));
+    q.set('l', String(round(state.geom.L, 6)));
+    q.set('s', String(round(state.sectionT * 100, 6)));
   }
   q.set('f', state.field);
   q.set('p', PLANE_KEYS.filter((k) => state.planes[k]).join('.') || '-');
-  q.set('q', String(round(state.phi, 1)));
+  q.set('q', String(round(state.phi, 6)));
   if (state.plane !== 'xy') q.set('c', state.plane); // 選んでいる円（既定の x–y 面なら書かない）
   if (state.model === 'rod') {
     const pr = rod && rod.probe ? rod.probe.r : state.probe.r;
     const pa = rod && rod.probe ? (rod.probe.a * 180) / Math.PI : state.probe.a;
-    q.set('pr', String(round(pr, 1)));
-    q.set('pa', String(round(pa, 1)));
+    q.set('pr', String(round(pr, 6)));
+    q.set('pa', String(round(pa, 6)));
   }
   if (state.axis.mode === 'fixed') {
     const a = state.axis;
-    q.set('ax', [round(a.sMin, 1), round(a.sMax, 1), round(a.tMax, 1)].join(','));
+    q.set('ax', [round(a.sMin, 6), round(a.sMax, 6), round(a.tMax, 6)].join(','));
   }
   return q.toString();
 }
@@ -168,7 +168,7 @@ function applyHash(hash) {
   state.loads.N = num('n', -RANGES.N, RANGES.N, state.loads.N);
   state.loads.M = num('m', -RANGES.M, RANGES.M, state.loads.M);
   state.loads.T = num('t', -RANGES.T, RANGES.T, state.loads.T);
-  state.geom.d = num('d', 10, 120, state.geom.d);
+  state.geom.d = num('d', 1, 120, state.geom.d);
   state.geom.L = num('l', 120, 800, state.geom.L);
   state.sectionT = num('s', 4, 88, state.sectionT * 100) / 100;
   state.phi = num('q', -180, 180, state.phi);
@@ -222,7 +222,7 @@ const VESSEL_SPEC = [
 ];
 
 const GEOM_SPEC = [
-  { key: 'd', tex: 'd', name: '直径', unit: 'mm', min: 10, max: 120, step: 1 },
+  { key: 'd', tex: 'd', name: '直径', unit: 'mm', min: 1, max: 120, step: 1 },
   { key: 'L', tex: 'L', name: '長さ', unit: 'mm', min: 120, max: 800, step: 10 },
   { key: 'sec', tex: 'x', name: '輪切りの位置', unit: '% of L', min: 4, max: 88, step: 1 },
 ];
@@ -236,7 +236,7 @@ function makeRow(spec, get, set) {
     `<span class="unit">${spec.unit}</span></div>` +
     `<div class="field-inputs">` +
     `<input type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}">` +
-    `<input type="number" min="${spec.min}" max="${spec.max}" step="${spec.step}"></div>`;
+    `<input type="number" min="${spec.min}" max="${spec.max}" step="any"></div>`;
   const range = row.querySelector('input[type=range]');
   const num = row.querySelector('input[type=number]');
 
@@ -248,16 +248,19 @@ function makeRow(spec, get, set) {
     update();
   };
   range.addEventListener('input', () => push(parseFloat(range.value)));
+  // 打っている途中（"5" → "50" の "5" など）で範囲外になっても丸めず、範囲内のときだけ反映する
   num.addEventListener('input', () => {
     const v = parseFloat(num.value);
-    if (!Number.isFinite(v)) return;
-    const c = clamp(v);
-    set(c);
-    range.value = c;
+    if (!Number.isFinite(v) || v !== clamp(v)) return;
+    set(v);
+    range.value = v;
     update();
   });
-  num.addEventListener('blur', () => {
-    num.value = String(clamp(parseFloat(num.value) || 0));
+  // 確定（Enter・フォーカスが外れたとき）で範囲内に収める
+  num.addEventListener('change', () => {
+    const v = parseFloat(num.value);
+    push(Number.isFinite(v) ? v : get());
+    num.value = String(round(get(), 6));
   });
 
   return {
@@ -265,7 +268,7 @@ function makeRow(spec, get, set) {
     sync() {
       const v = get();
       range.value = v;
-      if (document.activeElement !== num) num.value = String(Math.round(v * 100) / 100);
+      if (document.activeElement !== num) num.value = String(round(v, 6));
     },
   };
 }
@@ -511,7 +514,7 @@ function syncAxisUI() {
   $('axis-fields').hidden = state.axis.mode !== 'fixed';
   for (const k in axisInputs) {
     if (document.activeElement !== axisInputs[k]) {
-      axisInputs[k].value = String(round(state.axis[k], 1));
+      axisInputs[k].value = String(round(state.axis[k], 6));
     }
   }
 }

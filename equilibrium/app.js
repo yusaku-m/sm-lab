@@ -161,7 +161,7 @@ const ROW_FIELDS = {
   point: () => `
     ${posField()}
     <label class="lf"><span>大きさ</span>
-      <input data-f="P" type="number" min="0" max="${P_MAX}" step="0.5"><span class="u">kN</span></label>
+      <input data-f="P" type="number" min="0" max="${P_MAX}" step="any"><span class="u">kN</span></label>
     ${dirFields('向き')}`,
   reaction: () => `
     ${posField()}
@@ -170,7 +170,7 @@ const ROW_FIELDS = {
   moment: () => `
     ${posField()}
     <label class="lf"><span>大きさ</span>
-      <input data-f="C" type="number" min="0" max="${C_MAX}" step="0.5"><span class="u">kN·m</span></label>
+      <input data-f="C" type="number" min="0" max="${C_MAX}" step="any"><span class="u">kN·m</span></label>
     ${senseField('向き')}`,
   rmoment: () => `
     ${posField()}
@@ -180,7 +180,7 @@ const ROW_FIELDS = {
     ${posField('t1', '始点')}
     ${posField('t2', '終点')}
     <label class="lf"><span>強さ</span>
-      <input data-f="w" type="number" min="0" max="${W_MAX}" step="0.5"><span class="u">kN/m</span></label>
+      <input data-f="w" type="number" min="0" max="${W_MAX}" step="any"><span class="u">kN/m</span></label>
     <label class="lf"><span>形</span>
       <select data-f="shape">${Object.entries(DIST_SHAPES).map(([k, s]) => `<option value="${k}">${s.label}</option>`).join('')}</select></label>
     <label class="lf"><span>向き</span>
@@ -194,7 +194,7 @@ const POS_KEY = { pos: 't', t1: 't1', t2: 't2' };
 const dirFields = (label) => `<label class="lf"><span>${label}</span>
   <select data-f="up"><option value="up">上向き</option><option value="down">下向き</option></select></label>
   <label class="lf"><span>傾き</span>
-  <input data-f="tilt" type="number" min="-90" max="90" step="1"><span class="u">°</span></label>`;
+  <input data-f="tilt" type="number" min="-90" max="90" step="any"><span class="u">°</span></label>`;
 const senseField = (label) => `<label class="lf"><span>${label}</span>
   <select data-f="sense"><option value="ccw">反時計まわり</option><option value="cw">時計まわり</option></select></label>`;
 
@@ -212,18 +212,18 @@ function syncList() {
       row.querySelector(`.pos-mm[data-mm="${f}"]`).textContent = `= ${fmt(a[key] * state.Lmm, 1)} mm`;
     }
     if (a.type === 'dist') {
-      setIfIdle(q('w'), String(fmt(a.w, 2)));
+      setIfIdle(q('w'), String(fmt(a.w, 6)));
       setIfIdle(q('shape'), a.shape);
       setIfIdle(q('up'), a.up ? 'up' : 'down');
     }
     if (a.dir !== undefined) {
       const { up, tilt } = decompose(a.dir);
       setIfIdle(q('up'), up ? 'up' : 'down');
-      setIfIdle(q('tilt'), String(fmt(tilt, 1)));
+      setIfIdle(q('tilt'), String(fmt(tilt, 6)));
     }
-    if (a.type === 'point') setIfIdle(q('P'), String(fmt(a.P, 2)));
+    if (a.type === 'point') setIfIdle(q('P'), String(fmt(a.P, 6)));
     if (a.type === 'moment') {
-      setIfIdle(q('C'), String(fmt(Math.abs(a.C), 2)));
+      setIfIdle(q('C'), String(fmt(Math.abs(a.C), 6)));
       setIfIdle(q('sense'), a.C >= 0 ? 'ccw' : 'cw');
     }
     if (a.type === 'rmoment') setIfIdle(q('sense'), a.sgn > 0 ? 'ccw' : 'cw');
@@ -350,14 +350,14 @@ function captionOf(a, k) {
   const lsym = lsymNow();
   if (a.type === 'dist') {
     const rel = (t) => tex(posTex(t - state.tO, lsym));
-    return `${T.label}（${DIST_SHAPES[a.shape].label}） <b>${tex(`${nm.sym} = ${fmt(a.w, 2)}\\,\\mathrm{kN/m}`)}</b>、`
+    return `${T.label}（${DIST_SHAPES[a.shape].label}） <b>${tex(`${nm.sym} = ${fmt(a.w, 6)}\\,\\mathrm{kN/m}`)}</b>、`
       + `O から ${rel(a.t1)} 〜 ${rel(a.t2)} の区間、${a.up ? '上向き' : '下向き'}`;
   }
   const where = Math.abs(a.t - state.tO) < 1e-9 ? 'O の位置' : `O から ${tex(posTex(a.t - state.tO, lsym))}`;
   if (a.type === 'point' || a.type === 'reaction') {
     const { up, tilt } = decompose(a.dir);
     const head = a.type === 'point'
-      ? `<b>${tex(`${nm.sym} = ${fmt(a.P, 2)}\\,\\mathrm{kN}`)}</b>`
+      ? `<b>${tex(`${nm.sym} = ${fmt(a.P, 6)}\\,\\mathrm{kN}`)}</b>`
       : `<b>${tex(nm.sym)}</b>（大きさ未知）`;
     const dirTxt = (a.type === 'reaction' ? '仮定の向き：' : '') + (up ? '上向き' : '下向き');
     const tiltTxt = Math.abs(tilt) > 0.5
@@ -365,7 +365,7 @@ function captionOf(a, k) {
     return `${T.label} ${head}、${where}、${dirTxt}${tiltTxt}`;
   }
   if (a.type === 'moment') {
-    return `${T.label} <b>${tex(`${nm.sym} = ${fmt(Math.abs(a.C), 2)}\\,\\mathrm{kN\\cdot m}`)}</b>、${a.C >= 0 ? '反時計まわり' : '時計まわり'}`;
+    return `${T.label} <b>${tex(`${nm.sym} = ${fmt(Math.abs(a.C), 6)}\\,\\mathrm{kN\\cdot m}`)}</b>、${a.C >= 0 ? '反時計まわり' : '時計まわり'}`;
   }
   return `${T.label} <b>${tex(nm.sym)}</b>（大きさ未知）、仮定の向き：${a.sgn > 0 ? '反時計まわり' : '時計まわり'}`;
 }
@@ -588,14 +588,14 @@ for (const p of PRESETS) {
 function buildHash() {
   const a = state.actions.map((x) => {
     const key = TYPE_KEY[x.type];
-    if (x.type === 'point') return [key, fmt(x.t, 6), fmt(x.P, 3), fmt(x.dir, 3)].join(',');
-    if (x.type === 'reaction') return [key, fmt(x.t, 6), fmt(x.dir, 3)].join(',');
-    if (x.type === 'moment') return [key, fmt(x.t, 6), fmt(x.C, 3)].join(',');
-    if (x.type === 'dist') return [key, fmt(x.t1, 6), fmt(x.t2, 6), fmt(x.w, 3), x.shape, x.up ? 1 : -1].join(',');
+    if (x.type === 'point') return [key, fmt(x.t, 6), fmt(x.P, 6), fmt(x.dir, 6)].join(',');
+    if (x.type === 'reaction') return [key, fmt(x.t, 6), fmt(x.dir, 6)].join(',');
+    if (x.type === 'moment') return [key, fmt(x.t, 6), fmt(x.C, 6)].join(',');
+    if (x.type === 'dist') return [key, fmt(x.t1, 6), fmt(x.t2, 6), fmt(x.w, 6), x.shape, x.up ? 1 : -1].join(',');
     return [key, fmt(x.t, 6), x.sgn > 0 ? 1 : -1].join(',');
   }).join(';');
   return [
-    `m=${state.mode}`, `n=${state.notation}`, `L=${fmt(state.Lmm, 3)}`,
+    `m=${state.mode}`, `n=${state.notation}`, `L=${fmt(state.Lmm, 6)}`,
     `o=${fmt(state.tO, 6)}`, `a=${a || '-'}`,
     `e=${state.showEach ? 1 : 0}`, `v=${state.showValues ? 1 : 0}`,
   ].concat(state.distView !== 'dist' ? [`dv=${state.distView}`] : []).join('&');
@@ -603,7 +603,9 @@ function buildHash() {
 
 function snapDir(dir) {
   const { up, tilt } = decompose(+dir || 0);
-  return compose(up, snapTilt(tilt, 0.01));
+  // 整数に近い角度だけ吸着し、直接入力した小数の角度はそのまま残す
+  const s = snapTilt(tilt, 0.01);
+  return compose(up, Math.abs(s - tilt) < 1e-3 ? s : tilt);
 }
 
 function applyHash(h) {
