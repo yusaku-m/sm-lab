@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>応力テンソルと座標変換 — 丸棒の応力状態</title>
+<title>応力・ひずみテンソルと座標変換 — 丸棒の応力状態</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <!-- 見た目は「力とモーメントのつり合い」と同じテーマ。この単元だけの追加は style.css に -->
 <link rel="stylesheet" href="../equilibrium/style.css">
@@ -14,8 +14,8 @@
 
 <header class="site-head">
   <a class="home-link" href="../index.html">← sm-lab トップへ</a>
-  <h1>応力テンソルと座標変換</h1>
-  <p class="lede">一端を固定した丸棒に引張・ねじり・曲げ・横荷重を加え、ある点の応力テンソルを求めます。微小要素を回して成分がどう変わるか、主応力（固有値）でせん断が消えるところまで確かめられます。弾性力学テキストの演習 1.2 に対応しています。</p>
+  <h1>応力・ひずみテンソルと座標変換</h1>
+  <p class="lede">一端を固定した丸棒に引張・ねじり・曲げ・横荷重を加え、ある点の応力テンソルを求めます。微小要素を回して成分がどう変わるか、主応力（固有値）でせん断が消えるところまで確かめられます。「ひずみ ε」に切り替えると、フックの法則でひずみテンソルに直し、変形した微小要素とモールのひずみ円を描きます。弾性力学テキストの演習 1.2（応力）・1.4（ひずみ）に対応しています。</p>
 </header>
 
 <main class="lab">
@@ -27,6 +27,16 @@
     <div class="toolbar">
       <label class="seg-label" for="mode">入力</label>
       <select id="mode"></select>
+      <label class="seg-label" for="tn">テンソル</label>
+      <select id="tn">
+        <option value="s">応力 σ</option>
+        <option value="e">ひずみ ε</option>
+      </select>
+    </div>
+    <div class="toolbar toolbar-tight mat-row" id="mat-row" hidden>
+      <label class="lf"><span class="tex" data-tex="E"></span><input id="E" type="number" min="1" step="1"><span class="u">GPa</span></label>
+      <label class="lf"><span class="tex" data-tex="\nu"></span><input id="nu" type="number" min="0" max="0.499" step="0.01"></label>
+      <span class="u" id="G-o"></span>
     </div>
 
     <div data-mode="load">
@@ -49,7 +59,7 @@
     </div>
 
     <div data-mode="custom" hidden>
-      <p class="sub">成分を直接入力します（単位 MPa）。応力テンソルは対称行列になるはずなので、対称でないときは注意を出します。</p>
+      <p class="sub" id="cust-sub">成分を直接入力します（単位 MPa）。応力テンソルは対称行列になるはずなので、対称でないときは注意を出します。</p>
       <div class="cust-grid" id="cust"></div>
       <label class="check"><input type="checkbox" id="cust-sym" checked>対称に保つ（右上を入力すると左下も変わる）</label>
       <div class="err warn-box" id="cust-warn" hidden></div>
@@ -93,7 +103,7 @@
     </div>
 
     <div class="elem-stage">
-    <div class="elem-warn" id="elem-warn" hidden><b>応力テンソルではありません</b><span>行列が対称でない（<span class="tex" data-tex="\sigma_{ij}\ne\sigma_{ji}"></span>）ので、モーメントのつり合いを満たす微小要素は存在しません。図は行列をそのまま描いたものです。</span></div>
+    <div class="elem-warn" id="elem-warn" hidden></div>
     <div class="elem-pair">
       <figure>
         <div class="figure elem" id="elem0"></div>
@@ -105,7 +115,7 @@
       </figure>
     </div>
     </div>
-    <p class="hint">実線の矢印は正の面（外向き法線が軸の正の向き）、点線は負の面の応力。赤は引張・青は圧縮・緑はせん断で、長さは応力の大きさに比例します（回転前後で同じ縮尺）。</p>
+    <p class="hint" id="elem-hint">実線の矢印は正の面（外向き法線が軸の正の向き）、点線は負の面の応力。赤は引張・青は圧縮・緑はせん断で、長さは応力の大きさに比例します（回転前後で同じ縮尺）。</p>
     <div class="mat-pair">
       <div class="mat" id="mat0"></div>
       <div class="mat" id="mat1"></div>
@@ -115,7 +125,7 @@
   <!-- ------------------------------------------------ モールの応力円 -->
   <section class="card plot-card">
     <p class="kicker">Mohr's circle</p>
-    <h2>モールの応力円</h2>
+    <h2 id="mohr-title">モールの応力円</h2>
     <p class="sub" id="mohr-sub"></p>
     <div class="figure mohr" id="mohr"></div>
   </section>

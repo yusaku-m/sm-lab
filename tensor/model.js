@@ -35,10 +35,48 @@ export function loadBases(geom, loads) {
   };
 }
 
-export function customBases(vals) {
+export function customBases(vals, sym = '\\sigma') {
   const out = {};
-  for (const c of COMP) out['s' + c] = { sym: `\\sigma_{${c}}`, value: vals[c] };
+  for (const c of COMP) out['s' + c] = { sym: `${sym}_{${c}}`, value: vals[c] };
   return out;
+}
+
+// ---------------------------------------------------------------- フックの法則（等方性・線形弾性）
+// テキスト 1.4 の式: ε_ij = (1+ν)/E σ_ij − ν/E σ_kk δ_ij、σ_ij = E/(1+ν) (ε_ij + ν/(1−2ν) ε_kk δ_ij)。
+// E と σ は同じ単位（MPa）で渡す。ε は無次元（画面では ×10⁻⁶ で表示する）。
+export function hooke(S, E, nu) {
+  const tr = S[0][0] + S[1][1] + S[2][2];
+  return S.map((r, i) => r.map((v, j) => (1 + nu) / E * v - (i === j ? nu / E * tr : 0)));
+}
+
+export function invHooke(Eps, E, nu) {
+  const tr = Eps[0][0] + Eps[1][1] + Eps[2][2];
+  return Eps.map((r, i) => r.map((v, j) => E / (1 + nu) * (v + (i === j ? nu / (1 - 2 * nu) * tr : 0))));
+}
+
+// 丸棒の応力（σyy = σzz = σyz = 0）からひずみの記号表現を作る。テキストの解答例と同じ形
+// （ε_xx = σ_xx/E、ε_yy = ε_zz = −νσ_xx/E、ε_xy = (1+ν)σ_xy/E）にするため、基底の分子・分母に
+// E・ν・(1+ν) を書き足した基底を作る。value は ×10⁻⁶ 単位（E は MPa）。
+export function strainOfRod(terms, bases, E, nu) {
+  const eb = {};
+  const mk = (b, kind) => {
+    const k = `${b}_${kind}`;
+    if (!eb[k]) {
+      const B = bases[b];
+      const num = kind === 'E' ? B.num : kind === 'nu' ? `\\nu ${B.num}` : `${B.num}(1+\\nu)`;
+      const f = kind === 'E' ? 1 : kind === 'nu' ? nu : 1 + nu;
+      eb[k] = { num, den: B.den.replace('\\pi ', '\\pi E '), value: B.value * f / E * 1e6 };
+    }
+    return k;
+  };
+  const et = {};
+  for (const c of COMP) et[c] = [];
+  et.xx = terms.xx.map((t) => ({ b: mk(t.b, 'E'), c: t.c }));
+  et.yy = terms.xx.map((t) => ({ b: mk(t.b, 'nu'), c: -t.c }));
+  et.zz = et.yy.slice();
+  for (const c of ['xy', 'xz', 'yz']) et[c] = terms[c].map((t) => ({ b: mk(t.b, '1nu'), c: t.c }));
+  et.yx = et.xy.slice(); et.zx = et.xz.slice(); et.zy = et.yz.slice();
+  return { terms: et, bases: eb };
 }
 
 // 成分ごとの項のリスト {b: 基底のキー, c: 係数}
