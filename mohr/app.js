@@ -5,6 +5,7 @@
 import { RodScene } from './rod3d.js';
 import { VesselScene } from './vessel3d.js';
 import { renderPlate, NLEN, TLEN } from './plate2d.js';
+import { renderYield, CRITERIA, inPlane } from './yield2d.js';
 import {
   renderCircles, renderElement, PLANES, planeByKey, planeComps, planeAxisNames, setOutOfPlaneAxis,
 } from './mohr2d.js';
@@ -52,7 +53,12 @@ const state = {
   // 固定すると荷重を変えても目盛りが動かないので、符号が変わる/大きさが変わる
   // ときの円の動きがそのまま見える（自動だと円の見かけの大きさが変わらない）。
   axis: { mode: 'auto', sMin: -60, sMax: 120, tMax: 60 },
+  // 降伏条件のパネル（yield2d.js）。sy = 降伏応力、syc = 圧縮側の限界（延性材料は sy と同じ。最大主応力説だけに効く）、
+  // show = 描く説。URL は ys / yc（sy と違うときだけ）/ yv（全部表示でないときだけ。r・t・m の文字）
+  yld: { sy: 250, syc: 250, show: { rankine: true, tresca: true, mises: true } },
 };
+// 降伏応力・圧縮側の限界の入力範囲 [MPa]
+const Y_RANGES = { sy: [10, 2000], syc: [10, 6000] };
 
 // ---------------------------------------------------------------- URL 状態
 
@@ -108,6 +114,11 @@ function buildHash() {
     const a = state.axis;
     q.set('ax', [round(a.sMin, 6), round(a.sMax, 6), round(a.tMax, 6)].join(','));
   }
+  const Y = state.yld;
+  q.set('ys', String(round(Y.sy, 6)));
+  if (Y.syc !== Y.sy) q.set('yc', String(round(Y.syc, 6)));
+  const shown = CRITERIA.filter((c) => Y.show[c.key]);
+  if (shown.length !== CRITERIA.length) q.set('yv', shown.map((c) => c.letter).join('') || '-');
   return q.toString();
 }
 
@@ -189,6 +200,12 @@ function applyHash(hash) {
       state.axis = { mode: 'fixed', sMin: v[0], sMax: v[1], tMax: v[2] };
     }
   }
+  // 降伏条件: 省略は既定（250 MPa・圧縮側も同じ・3 説とも表示）に戻す
+  const Y = state.yld;
+  Y.sy = num('ys', Y_RANGES.sy[0], Y_RANGES.sy[1], 250);
+  Y.syc = num('yc', Y_RANGES.syc[0], Y_RANGES.syc[1], Y.sy);
+  const yv = q.get('yv');
+  for (const c of CRITERIA) Y.show[c.key] = yv === null ? true : yv.includes(c.letter);
   return true;
 }
 
@@ -292,6 +309,62 @@ for (const spec of VESSEL_SPEC) {
   const r = makeRow(spec, () => state.vessel[spec.key], (v) => { state.vessel[spec.key] = v; });
   rows.push(r);
   $('vessel-fields').appendChild(r.el);
+}
+
+// --- 降伏条件（yield2d.js）
+const YIELD_SPEC = [
+  { key: 'sy', tex: '\\sigma_Y', name: ' 降伏応力', unit: 'MPa', min: Y_RANGES.sy[0], max: 1000, step: 5 },
+  { key: 'syc', tex: '\\sigma_{Yc}', name: ' 圧縮側の限界（最大主応力説）', unit: 'MPa', min: Y_RANGES.syc[0], max: 3000, step: 5 },
+];
+for (const spec of YIELD_SPEC) {
+  const r = makeRow(spec, () => state.yld[spec.key], (v) => {
+    const Y = state.yld;
+    // 圧縮側の限界が σY と同じ（延性材料）なら、σY を動かしたときに一緒に動かす
+    if (spec.key === 'sy' && Y.syc === Y.sy) Y.syc = v;
+    Y[spec.key] = v;
+  });
+  rows.push(r);
+  $('yield-fields').appendChild(r.el);
+}
+const yieldBoxes = {};
+for (const c of CRITERIA) {
+  const lab = document.createElement('label');
+  lab.className = 'check';
+  lab.innerHTML = `<input type="checkbox"><span class="swatch" style="background:${c.color}"></span>${c.name}（${c.who}）`;
+  const box = lab.querySelector('input');
+  box.addEventListener('change', () => {
+    state.yld.show[c.key] = box.checked;
+    update({ skipRod: true });
+  });
+  yieldBoxes[c.key] = box;
+  $('yield-checks').appendChild(lab);
+}
+
+/** 降伏曲面と、各説の相当応力・降伏応力に対する比率の表。 */
+function renderYieldPanel(comps) {
+  const Y = state.yld;
+  for (const c of CRITERIA) yieldBoxes[c.key].checked = Y.show[c.key];
+  const ev = renderYield($('yield-plot'), comps, { sy: Y.sy, syc: Y.syc, show: Y.show, fontScale: isCompact() ? 1.3 : 1 });
+  const [s1, s2, s3] = ev.s;
+  const [sa, sb] = inPlane(comps);
+  const brittle = Y.syc !== Y.sy;
+  let html =
+    `<tr><th>主応力</th><td colspan="3">σ<sub>1</sub> = ${fmt(s1)}，σ<sub>2</sub> = ${fmt(s2)}，σ<sub>3</sub> = ${fmt(s3)}<span class="u">MPa</span></td></tr>` +
+    `<tr><th></th><th>相当応力 σ<sub>eq</sub></th><th>σ<sub>eq</sub>/σ<sub>Y</sub></th><th></th></tr>`;
+  for (const c of CRITERIA) {
+    const e = ev[c.key];
+    const two = c.key === 'rankine' && brittle; // 引張側・圧縮側を別々に比べる
+    const ratio = two ? `${e.rt.toFixed(3)}（引張）<br>${e.rc.toFixed(3)}（圧縮）` : e.ratio.toFixed(3);
+    const eq = two ? '—' : `${fmt(e.eq)}<span class="u">MPa</span>`;
+    const bad = e.ratio >= 1;
+    html += `<tr><th>${c.name}</th><td>${eq}</td><td>${ratio}</td>` +
+      `<td class="${bad ? 'ng' : 'ok'}">${bad ? (two ? '破損' : '降伏') : '弾性域'}</td></tr>`;
+  }
+  $('yield-table').innerHTML = html;
+  $('yield-note').textContent =
+    `主応力は面外（${isPlate() ? 'z' : 'r'} 方向）の主応力 0 も含めて大きい順に σ1 ≧ σ2 ≧ σ3。` +
+    `降伏曲面の点は x–y 面の 2 つの主応力（σA = ${fmt(sa)}，σB = ${fmt(sb)} MPa）。` +
+    (brittle ? '最大主応力説は σ1/σY と |σ3|/σYc の大きい方で判定する（脆性材料）。' : '');
 }
 
 // --- 微小平板
@@ -1038,6 +1111,7 @@ function update(opts = {}) {
       plane: state.plane,
     });
     renderTable(comps, an, phi);
+    renderYieldPanel(comps);
     if (plateOn) {
       syncPlateUI();
       plateDrag = renderPlate($('plate-view'), state.plate.s, state.plate.e, phi, {

@@ -158,6 +158,22 @@
     </div>
   </section>
 
+  <!-- ------------------------------------------------ 降伏条件・降伏曲面 -->
+  <section class="card yield-card">
+    <p class="kicker">Yield criteria</p>
+    <h2>降伏条件と降伏曲面</h2>
+    <p class="sub">面内の 2 つの主応力 <span class="tex" data-tex="\sigma_A,\ \sigma_B"></span>（大小の順は問わない）を軸に、3 つの降伏条件の境界と今の応力状態（●）を描きます。破線は荷重を比例して大きくしたときの道すじで、○ の点でその説の境界に当たります。</p>
+    <div class="yield-area">
+      <div class="plot yield-plot" id="yield-plot"></div>
+      <div class="yield-side">
+        <div id="yield-fields"></div>
+        <div class="checks" id="yield-checks"></div>
+        <table class="stress-table yield-table" id="yield-table"></table>
+        <p class="yield-note" id="yield-note"></p>
+      </div>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------ 式 -->
   <section class="card notes-card">
     <p class="kicker">Formulas</p>

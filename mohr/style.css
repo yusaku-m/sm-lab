@@ -91,11 +91,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   grid-template-areas:
     "rod   mohr"
     "ctrl  mohr"
+    "yield yield"
     "notes notes";
 }
 .rod-card { grid-area: rod; }
 .controls-card { grid-area: ctrl; }
 .mohr-card { grid-area: mohr; }
+.yield-card { grid-area: yield; }
 .notes-card { grid-area: notes; }
 
 /* スマホ: 応力円を上・丸棒を下に並べ、この2枚が同時に見えるようにする
@@ -103,9 +105,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 920px) {
   .lab {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "mohr" "rod" "ctrl" "notes";
+    grid-template-areas: "mohr" "rod" "ctrl" "yield" "notes";
   }
 }
+
+/* ---------- 降伏曲面（yield2d.js） ---------- */
+.yield-area {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .yield-area { grid-template-columns: minmax(0, 1fr); }
+}
+.yield-plot { max-width: 380px; width: 100%; margin: 0 auto; }
+.yield-svg { width: 100%; height: auto; display: block; font-family: var(--body-font); }
+.yield-table td.ok { color: var(--green); font-weight: 600; }
+.yield-table td.ng { color: var(--accent-strong); font-weight: 700; }
+.yield-note { color: var(--muted); font-size: 0.78rem; line-height: 1.6; margin: 8px 0 0; }
 
 /* ---------- card ---------- */
 .card {
