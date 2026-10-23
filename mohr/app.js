@@ -314,7 +314,7 @@ for (const spec of VESSEL_SPEC) {
 // --- 降伏条件（yield2d.js）
 const YIELD_SPEC = [
   { key: 'sy', tex: '\\sigma_Y', name: ' 降伏応力', unit: 'MPa', min: Y_RANGES.sy[0], max: 1000, step: 5 },
-  { key: 'syc', tex: '\\sigma_{Yc}', name: ' 圧縮側の限界（最大主応力説）', unit: 'MPa', min: Y_RANGES.syc[0], max: 3000, step: 5 },
+  { key: 'syc', tex: '\\sigma_{Yc}', name: ' 圧縮側の限界（ランキン）', unit: 'MPa', min: Y_RANGES.syc[0], max: 3000, step: 5 },
 ];
 for (const spec of YIELD_SPEC) {
   const r = makeRow(spec, () => state.yld[spec.key], (v) => {
@@ -330,7 +330,7 @@ const yieldBoxes = {};
 for (const c of CRITERIA) {
   const lab = document.createElement('label');
   lab.className = 'check';
-  lab.innerHTML = `<input type="checkbox"><span class="swatch" style="background:${c.color}"></span>${c.name}（${c.who}）`;
+  lab.innerHTML = `<input type="checkbox"><span class="swatch" style="background:${c.color}"></span>${c.name}`;
   const box = lab.querySelector('input');
   box.addEventListener('change', () => {
     state.yld.show[c.key] = box.checked;
@@ -364,7 +364,7 @@ function renderYieldPanel(comps) {
   $('yield-note').textContent =
     `主応力は面外（${isPlate() ? 'z' : 'r'} 方向）の主応力 0 も含めて大きい順に σ1 ≧ σ2 ≧ σ3。` +
     `降伏曲面の点は x–y 面の 2 つの主応力（σA = ${fmt(sa)}，σB = ${fmt(sb)} MPa）。` +
-    (brittle ? '最大主応力説は σ1/σY と |σ3|/σYc の大きい方で判定する（脆性材料）。' : '');
+    (brittle ? 'ランキン相当応力は σ1/σY と |σ3|/σYc の大きい方で判定する（脆性材料）。' : '');
 }
 
 // --- 微小平板

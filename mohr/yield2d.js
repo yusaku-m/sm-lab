@@ -12,9 +12,9 @@
 const NS = 'http://www.w3.org/2000/svg';
 
 export const CRITERIA = [
-  { key: 'rankine', letter: 'r', name: '最大主応力説', who: 'ランキン', color: '#bd442c', dash: '2 3' },
-  { key: 'tresca', letter: 't', name: '最大せん断応力説', who: 'トレスカ', color: '#245b8d', dash: '7 4' },
-  { key: 'mises', letter: 'm', name: 'せん断ひずみエネルギー説', who: 'ミーゼス', color: '#1d2932', dash: null },
+  { key: 'rankine', letter: 'r', name: 'ランキン相当応力', who: 'ランキン', color: '#bd442c', dash: '2 3' },
+  { key: 'tresca', letter: 't', name: 'トレスカ相当応力', who: 'トレスカ', color: '#245b8d', dash: '7 4' },
+  { key: 'mises', letter: 'm', name: 'ミーゼス相当応力', who: 'ミーゼス', color: '#1d2932', dash: null },
 ];
 
 /** x–y 面内の 2 つの主応力 (σA ≧ σB)。 */
