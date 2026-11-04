@@ -2,16 +2,19 @@
 import * as Mdl from './model.js';
 import { Camera, Panel, COLORS, circle, add, sc } from './view3d.js';
 
-const DEF_MAG = { P: 10, T: 50, M: 50, F: 1 };
-const UNIT = { P: 'kN', T: 'N·m', M: 'N·m', F: 'kN' };
+// My（y 軸まわりの曲げ）は弾性力学 演習 2.1 用（2026-11-04）。ハッシュは ld=My-50 のように書く
+const DEF_MAG = { P: 10, T: 50, M: 50, My: 50, F: 1 };
+const UNIT = { P: 'kN', T: 'N·m', M: 'N·m', My: 'N·m', F: 'kN' };
 const DIRS = {
   P: ['引張', '圧縮'],
   T: ['+x まわり', '−x まわり'],
   M: ['+z まわり', '−z まわり'],
+  My: ['+y まわり', '−y まわり'],
   F: ['−y 向き', '+y 向き'],
 };
-const LOAD_NAME = { P: '軸荷重', T: 'ねじり', M: '曲げ', F: '横荷重' };
-const LOAD_COLOR = { P: COLORS.load, T: COLORS.moment, M: COLORS.moment, F: COLORS.load };
+const LOAD_NAME = { P: '軸荷重', T: 'ねじり', M: '曲げ（z 軸まわり）', My: '曲げ（y 軸まわり）', F: '横荷重' };
+const LOAD_COLOR = { P: COLORS.load, T: COLORS.moment, M: COLORS.moment, My: COLORS.moment, F: COLORS.load };
+const LOAD_SYM = { P: 'P', T: 'T', M: 'M_z', My: 'M_y', F: 'F' };
 
 // ---------------------------------------------------------------- 状態
 const zeroCustom = () => Object.fromEntries(Mdl.COMP.map((c) => [c, 0]));
@@ -109,7 +112,7 @@ for (const k of Mdl.LOAD_KEYS) {
   row.className = 'load-row';
   row.style.setProperty('--c', LOAD_COLOR[k]);
   row.innerHTML = `
-    <label class="check"><input type="checkbox" class="on"><span class="sym">${tx(k)}</span><span class="kind">${LOAD_NAME[k]}</span></label>
+    <label class="check"><input type="checkbox" class="on"><span class="sym">${tx(LOAD_SYM[k])}</span><span class="kind">${LOAD_NAME[k]}</span></label>
     <label class="lf"><input type="number" class="mag" min="0" step="any"><span class="u">${UNIT[k]}</span></label>
     <label class="lf"><select class="dir"><option value="1">${DIRS[k][0]}</option><option value="-1">${DIRS[k][1]}</option></select></label>
     <span class="val"></span>`;
@@ -398,7 +401,15 @@ function renderRod(cur) {
     let arc = circle([0, 0, 0], ex, ey, rr, 0.62 * Math.PI, 1.38 * Math.PI, 40);
     if (Ls.M.s < 0) arc = arc.reverse();
     P.path3(arc, { color: COLORS.moment, width: 2.2, head: true, headScale: 1.2 });
-    P.label([-rr - 0.22, 0, 0.0], 'M', { color: COLORS.moment });
+    P.label([-rr - 0.22, 0, 0.0], Ls.My.on ? 'M_z' : 'M', { color: COLORS.moment });
+  }
+  if (Ls.My.on) { // y 軸まわりの円弧（xz 面内、棒の左側）
+    const rr = Rd + 0.55;
+    // 角度を増やす向き＝ez から ex へ回る向き＝+y まわり（x < 0 の側に描く）
+    let arc = circle([0, 0, 0], ez, ex, rr, 1.12 * Math.PI, 1.88 * Math.PI, 40);
+    if (Ls.My.s < 0) arc = arc.reverse();
+    P.path3(arc, { color: COLORS.moment, width: 2.2, head: true, headScale: 1.2 });
+    P.label([-rr - 0.22, 0, 0.12], Ls.M.on ? 'M_y' : 'M', { color: COLORS.moment });
   }
   P.end({ aspect: 2 });
 }
@@ -627,7 +638,8 @@ function renderMohr(cur) {
 function renderFormulas(cur) {
   const { S, Sp, sym } = cur;
   const ld = state.loads;
-  const vals = (k) => `${k}=${Mdl.fmt(ld[k].mag, 4)}\\ \\mathrm{${UNIT[k].replace('·', '\\cdot ')}}`;
+  const symOf = (k) => (k === 'M' ? (ld.My.on ? 'M_z' : 'M') : k === 'My' ? (ld.M.on ? 'M_y' : 'M') : k);
+  const vals = (k) => `${symOf(k)}=${Mdl.fmt(ld[k].mag, 4)}\\ \\mathrm{${UNIT[k].replace('·', '\\cdot ')}}`;
   const matE = () => tx(`E=${Mdl.fmt(state.mat.E, 4)}\\ \\mathrm{GPa},\\ \\nu=${Mdl.fmt(state.mat.nu, 3)}`);
 
   // --- 1. 応力テンソル（ひずみモードは 1′. でひずみへ）
@@ -643,7 +655,8 @@ function renderFormulas(cur) {
     const sg = (k, neg = false) => ((ld[k].s > 0) !== neg ? '' : '-');
     if (on.includes('P')) h += eq(`\\text{引張：}\\ \\sigma_{xx}=${sg('P')}\\frac{P}{A}=${sg('P')}\\frac{4P}{\\pi D^2}`);
     if (on.includes('T')) h += eq(`\\text{ねじり：}\\ \\sigma_{xy}=${sg('T')}\\frac{T z}{I_p}=${sg('T')}\\frac{32T z}{\\pi D^4},\\qquad \\sigma_{xz}=${sg('T', true)}\\frac{T y}{I_p}=${sg('T', true)}\\frac{32T y}{\\pi D^4}`);
-    if (on.includes('M')) h += eq(`\\text{曲げ：}\\ \\sigma_{xx}=${sg('M')}\\frac{M y}{I}=${sg('M')}\\frac{64M y}{\\pi D^4}`);
+    if (on.includes('M')) { const m = symOf('M'); h += eq(`\\text{曲げ（}z\\text{ 軸まわり）：}\\ \\sigma_{xx}=${sg('M')}\\frac{${m} y}{I}=${sg('M')}\\frac{64${m} y}{\\pi D^4}`); }
+    if (on.includes('My')) { const m = symOf('My'); h += eq(`\\text{曲げ（}y\\text{ 軸まわり）：}\\ \\sigma_{xx}=${sg('My', true)}\\frac{${m} z}{I}=${sg('My', true)}\\frac{64${m} z}{\\pi D^4}`); }
     if (on.includes('F')) h += eq(`\\text{横荷重：}\\ \\sigma_{xx}=${sg('F')}\\frac{(Fx)\\,y}{I}=${sg('F')}\\frac{64F x y}{\\pi D^4},\\qquad \\sigma_{xy}=${sg('F')}\\frac{F}{3I}\\left(\\frac{D^2}{4}-y^2\\right)`);
     if (on.includes('F')) h += '<p>横荷重のせん断応力は材料力学の近似（同じ高さ <i>y</i> の弦の上で一様）。中立軸 <i>y</i> = 0 で最大の 4F/3A、表面で 0 です。</p>';
     h += '<p>そのほかの成分（σ<sub>yy</sub>, σ<sub>zz</sub>, σ<sub>yz</sub>）は 0、せん断応力は対称（σ<sub>yx</sub> = σ<sub>xy</sub> など）です。</p>';
@@ -767,7 +780,8 @@ function renderFormulas(cur) {
     h += '<div class="step">STEP 2　成分（1. の STEP 3）を代入</div>';
     const half = terms.xx.map((t) => ({ ...t, c: t.c / 2 }));
     const H = Mdl.sumTex(half, bases);
-    const wrapP = (tl) => (tl.length > 1 || (tl[0] && tl[0].c < 0) ? `\\left(${Mdl.sumTex(tl, bases)}\\right)` : Mdl.sumTex(tl, bases));
+    // 分数の 2 乗は括弧でくくる（くくらないと分子だけ 2 乗したように見える）
+    const wrapP = (tl) => `\\left(${Mdl.sumTex(tl, bases)}\\right)`;
     const sq = [half, terms.xy, terms.xz].filter((tl) => tl.length).map((tl) => `${wrapP(tl)}^2`);
     if (!terms.xy.length && !terms.xz.length) {
       h += eq(`\\lambda=\\sigma_{xx}=${Mdl.sumTex(terms.xx, bases)},\\quad 0,\\quad 0`);
@@ -795,10 +809,41 @@ function renderFormulas(cur) {
   if (cur.strain) {
     h += '<p>等方性の材料では、主ひずみの方向（主軸）は主応力の方向と一致します（フックの法則で、せん断応力が 0 ならせん断ひずみも 0）。</p>';
   }
+  h += planeTex(S, cur.strain, unit, deg);
   h += '<p>「主軸へ回す」を押すと、要素の軸を主軸に合わせ、せん断成分が 0 になるのを確かめられます。</p>';
   $('f-eig').innerHTML = h;
 }
 
+
+// z 軸が主軸（σxz = σyz = 0）のとき、xy 面内の主応力と主軸の向き θp を式で並べる（弾性力学 2.1。2026-11-04）。
+// θp は x 軸から z 軸まわりに反時計回り。大きい方の面内の主応力の向きを返す（0.5·atan2 の解）。
+// 応力では、面内の最大せん断応力と、z 方向の主応力 0 を含めた最大せん断応力も比べる（同符号なら後者が大きい）。
+function planeTex(S, strain, unit, deg) {
+  const ref = Math.max(1e-12, ...S.flat().map(Math.abs));
+  if (Math.abs(S[0][2]) >= 1e-9 * ref || Math.abs(S[1][2]) >= 1e-9 * ref) return '';
+  const [a, b, c] = [S[0][0], S[1][1], S[0][1]];
+  const ctr = (a + b) / 2, R = Math.hypot((a - b) / 2, c);
+  const tp = 0.5 * Math.atan2(2 * c, a - b) * 180 / Math.PI;
+  const Q = (t) => eq(ts(t));
+  let h = js('<div class="step">xy 面内の主応力と主軸の向き（z 軸が主軸のとき）</div>');
+  h += Q(`\\begin{aligned}\\sigma_{a},\\sigma_{b}&=\\frac{\\sigma_{xx}+\\sigma_{yy}}{2}\\pm\\sqrt{\\left(\\frac{\\sigma_{xx}-\\sigma_{yy}}{2}\\right)^2+\\sigma_{xy}^2}\\\\&=${Mdl.fmt(ctr)}\\pm${Mdl.fmt(R)}=${Mdl.fmt(ctr + R)},\\ ${Mdl.fmt(ctr - R)}${unit}\\end{aligned}`);
+  if (R < 1e-12 * ref) {
+    h += '<p>面内のどの向きも主軸です（2 つの主応力が等しい）。</p>';
+  } else {
+    h += Q(`\\tan 2\\theta_p=\\frac{2\\sigma_{xy}}{\\sigma_{xx}-\\sigma_{yy}}=\\frac{${Mdl.fmt(2 * c)}}{${Mdl.fmt(a - b)}}\\quad\\Longrightarrow\\quad \\theta_p=${deg(tp)}`);
+    h += js(`<p>${tx('x')} 軸から ${tx('z')} 軸まわりに反時計回りに ${tx(`\\theta_p=${deg(tp)}`)} の向きが大きい方の面内の主応力 ${tx(ts('\\sigma_a'))} の主軸、${tx(`${deg(tp > 0 ? tp - 90 : tp + 90)}`)} の向きが ${tx(ts('\\sigma_b'))} の主軸です（${tx('\\tan')} の周期から ${tx('\\theta_p')} は 90° ずれた 2 つの向きを表すので、${tx(ts("\\sigma'_{xx}"))} の式に代入して大きい方を選ぶ）。回転を z 軸まわり・${tx(`\\theta=${deg(tp)}`)} にすると ${tx(ts("\\sigma'_{xy}=0"))} になります。</p>`);
+  }
+  if (!strain) {
+    const v = [ctr + R, ctr - R, S[2][2]].sort((x, y) => y - x);
+    const t3 = (v[0] - v[2]) / 2;
+    h += eq(`\\text{面内の最大せん断応力：}\\ \\frac{\\sigma_a-\\sigma_b}{2}=${Mdl.fmt(R)}${unit}`);
+    h += eq(`\\text{3 つの主応力での最大せん断応力：}\\ \\frac{\\sigma_1-\\sigma_3}{2}=${Mdl.fmt(t3)}${unit}`);
+    if (t3 > R * (1 + 1e-9) + 1e-12 * ref) {
+      h += `<p>面内の 2 つの主応力が同符号なので、${tx('z')} 方向の主応力 ${tx(`\\sigma_{zz}=${Mdl.fmt(S[2][2])}`)} との差の方が大きく、最大せん断応力は xy 面内ではなく ${tx('z')} 軸を含む面に生じます（応力円では、点線の 3 つの円のうち一番大きい円）。</p>`;
+    }
+  }
+  return h;
+}
 
 // ---------------------------------------------------------------- URL ハッシュ
 function buildHash() {
@@ -841,7 +886,7 @@ function applyHash(h) {
   } else if (p.has('ld') || p.has('pt')) {
     for (const k of Mdl.LOAD_KEYS) state.loads[k] = { on: false, mag: DEF_MAG[k], s: 1 };
     for (const tok of (p.get('ld') || '').split(',')) {
-      const m = tok.match(/^([PTMF])(-?)([\d.]+)$/);
+      const m = tok.match(/^(My|[PTMF])(-?)([\d.]+)$/);
       if (m) state.loads[m[1]] = { on: true, s: m[2] ? -1 : 1, mag: Math.max(0, +m[3]) };
     }
     const v = (p.get('pt') || '').split(',').map(Number);
@@ -960,7 +1005,7 @@ function boot() {
   applyHash(location.hash.replace(/^#/, ''));
   lastHash = location.hash.replace(/^#/, '');
   for (const el of document.querySelectorAll('.tex[data-tex]')) K().render(el.dataset.tex, el, { throwOnError: false });
-  for (const k of Mdl.LOAD_KEYS) loadRows[k].querySelector('.sym').innerHTML = tx(k);
+  for (const k of Mdl.LOAD_KEYS) loadRows[k].querySelector('.sym').innerHTML = tx(LOAD_SYM[k]);
   render();
 }
 if (window.katex) boot(); else window.addEventListener('load', boot);

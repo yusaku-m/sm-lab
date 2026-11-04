@@ -5,18 +5,19 @@
 //   P: x 方向の引張荷重（s = -1 で圧縮）
 //   T: x 軸まわりのねじりモーメント（s = +1 で +x まわり＝右ねじ）
 //   M: z 軸まわりの曲げモーメント（s = +1 で +z まわり）
+//   My: y 軸まわりの曲げモーメント（s = +1 で +y まわり。演習 2.1 用、2026-11-04）
 //   F: y 軸の負の向きの横荷重（s = -1 で +y 向き）
 // が作用する。点 (x, y, z) は x = ξL, y = η·D/2, z = ζ·D/2 で表す。
 //
 // 応力は「切断面より自由端側（0 ≤ x' ≤ x）の自由体」のつり合いから決める。正の面（外向き法線 +x）の
-// 断面力は N = P, V_y = F, M_z = -(M + F x), M_x = -T（いずれも s を含む）で、
-//   σxx = N/A − M_z y / I,  σxy = −M_x z / Ip + V_y (R² − y²)/(3I),  σxz = M_x y / Ip
+// 断面力は N = P, V_y = F, M_z = -(M + F x), M_y = -My, M_x = -T（いずれも s を含む）で、
+//   σxx = N/A − M_z y / I + M_y z / I,  σxy = −M_x z / Ip + V_y (R² − y²)/(3I),  σxz = M_x y / Ip
 // （横荷重のせん断応力は材料力学の近似＝弦の上で一様。中立軸で 4F/3A）。
 // テキストの解答例（1.2.1〜1.2.12）と符号が一致することは app.js の PRESETS で確かめている。
 //
 // 単位: D, L は mm、P, F は kN、T, M は N·m。応力は MPa。
 
-export const LOAD_KEYS = ['P', 'T', 'M', 'F'];
+export const LOAD_KEYS = ['P', 'T', 'M', 'My', 'F'];
 export const COMP = ['xx', 'xy', 'xz', 'yx', 'yy', 'yz', 'zx', 'zy', 'zz'];
 export const AX = ['x', 'y', 'z'];
 
@@ -29,7 +30,9 @@ export function loadBases(geom, loads) {
   return {
     P2: { num: 'P', den: '\\pi D^2', value: k(loads.P.mag * 1e3 / D ** 2) },
     T3: { num: 'T', den: '\\pi D^3', value: k(loads.T.mag * 1e3 / D ** 3) },
-    M3: { num: 'M', den: '\\pi D^3', value: k(loads.M.mag * 1e3 / D ** 3) },
+    // M と My を同時に使うときだけ添字で区別する（テキストの問題文はどちらも M）
+    M3: { num: loads.My.on ? 'M_z' : 'M', den: '\\pi D^3', value: k(loads.M.mag * 1e3 / D ** 3) },
+    My3: { num: loads.M.on ? 'M_y' : 'M', den: '\\pi D^3', value: k(loads.My.mag * 1e3 / D ** 3) },
     F2: { num: 'F', den: '\\pi D^2', value: k(loads.F.mag * 1e3 / D ** 2) },
     FL3: { num: 'FL', den: '\\pi D^3', value: k(loads.F.mag * 1e3 * L / D ** 3) },
   };
@@ -88,6 +91,7 @@ export function loadTerms(loads, pt) {
   const on = (k) => loads[k].on && loads[k].mag !== 0;
   if (on('P')) add('xx', 'P2', 4 * loads.P.s);
   if (on('M')) add('xx', 'M3', 32 * eta * loads.M.s);
+  if (on('My')) add('xx', 'My3', -32 * zeta * loads.My.s);
   if (on('F')) add('xx', 'FL3', 32 * xi * eta * loads.F.s);
   if (on('T')) add('xy', 'T3', 16 * zeta * loads.T.s);
   if (on('F')) add('xy', 'F2', 16 * (1 - eta * eta) / 3 * loads.F.s);
