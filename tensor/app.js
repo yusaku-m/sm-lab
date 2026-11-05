@@ -208,7 +208,15 @@ const wrap180 = (a) => ((a + 180) % 360 + 360) % 360 - 180;
 function tick(now) {
   if (!playing && !tween) return;
   const dt = Math.min(0.1, (now - playLast) / 1000); playLast = now;
-  if (tween) {
+  if (tween && tween.kind === 'path') {
+    const sg = tween.segs[tween.i];
+    tween.t = Math.min(1, tween.t + dt / sg.dur);
+    const e = 0.5 - 0.5 * Math.cos(Math.PI * tween.t);
+    const Q = Mdl.mul(Mdl.axisAngleQ(sg.axis, sg.ang * e), sg.Qa);
+    state.rot.mode = 'euler';
+    state.rot.eu = Mdl.eulerFromQ(tween.t >= 1 && tween.i === tween.segs.length - 1 ? tween.Qend : Q).map((a) => a * 180 / Math.PI);
+    if (tween.t >= 1) { tween.i += 1; tween.t = 0; if (tween.i >= tween.segs.length) tween = null; }
+  } else if (tween) {
     tween.t = Math.min(1, tween.t + dt / tween.dur);
     const e = 0.5 - 0.5 * Math.cos(Math.PI * tween.t);
     if (tween.kind === 'axis') state.rot.th = tween.from + (tween.to - tween.from) * e;
@@ -260,10 +268,20 @@ function toPrincipal(shear = false) {
     r.eu = Mdl.eulerFromQ(rotQ()).map((a) => a * 180 / Math.PI);
     r.mode = 'euler';
   }
-  const target = Mdl.eulerFromQ(shear ? Mdl.maxShearQ(S) : Mdl.principalQ(S)).map((a) => a * 180 / Math.PI);
-  const from = r.eu.slice();
-  const to = target.map((a, n) => (n === 1 ? a : from[n] + wrap180(a - from[n])));
-  tween = { kind: 'euler', from, to, t: 0, dur: 1.0 };
+  // 回転行列の間を 1 本の軸まわりに回して補間する（オイラー角の直線補間だと面が入れ替わるように見えるため。2026-11-05）。
+  // 最大せん断は 2 段: まず主軸へ、次に中間の主軸（σ2 = y′）まわりに 45° 傾ける
+  const Q0 = rotQ();
+  const P = Mdl.principalQNear(S, Q0);
+  const keys = shear ? [P, Mdl.maxShearQ(P)] : [P];
+  const segs = [];
+  let Qa = Q0;
+  for (const Qb of keys) {
+    const { axis, ang } = Mdl.axisAngleOf(Mdl.mul(Qb, Mdl.tr(Qa)));
+    if (ang > 1e-6) segs.push({ Qa, axis, ang, dur: 0.35 + 0.65 * ang / (Math.PI / 2) });
+    Qa = Qb;
+  }
+  if (!segs.length) return;
+  tween = { kind: 'path', segs, Qend: Qa, i: 0, t: 0 };
   playLast = performance.now(); requestAnimationFrame(tick);
 }
 
@@ -818,7 +836,7 @@ function renderFormulas(cur) {
     h += '<p>等方性の材料では、主ひずみの方向（主軸）は主応力の方向と一致します（フックの法則で、せん断応力が 0 ならせん断ひずみも 0）。</p>';
   }
   h += planeTex(S, cur.strain, unit, deg);
-  h += '<p>「主軸へ回す」を押すと、要素の軸を主軸に合わせ、せん断成分が 0 になるのを確かめられます。「最大せん断' + (cur.strain ? 'ひずみ' : '応力') + 'の面へ回す」は、最大と最小の主軸の間（中間の主軸まわりに 45°）へ回し、' + tx(cur.strain ? "\\varepsilon'_{xy}=\\dfrac{\\varepsilon_1-\\varepsilon_3}{2}" : "\\sigma'_{xy}=\\dfrac{\\sigma_1-\\sigma_3}{2}") + '（垂直成分は ' + tx(cur.strain ? "\\dfrac{\\varepsilon_1+\\varepsilon_3}{2}" : "\\dfrac{\\sigma_1+\\sigma_3}{2}") + ' で等しい）になる面を見せます。面内の 2 つの主応力が同符号のときは、' + tx('z') + ' 軸を含む面へ回ります。</p>';
+  h += '<p>「主軸へ回す」を押すと、要素の軸を主軸に合わせ、せん断成分が 0 になるのを確かめられます。「最大せん断' + (cur.strain ? 'ひずみ' : '応力') + 'の面へ回す」は、最大と最小の主軸がつくる平面の中で、中間の主軸（' + tx(cur.strain ? '\\varepsilon_2' : '\\sigma_2') + '）まわりに 45° 回し、せん断成分が ' + tx(cur.strain ? '\\dfrac{\\varepsilon_1-\\varepsilon_3}{2}' : '\\dfrac{\\sigma_1-\\sigma_3}{2}') + '（2 つの垂直成分は ' + tx(cur.strain ? '\\dfrac{\\varepsilon_1+\\varepsilon_3}{2}' : '\\dfrac{\\sigma_1+\\sigma_3}{2}') + ' で等しい）になる面を見せます。座標軸まわりの回転で届くときはその角度 ' + tx('\\theta_p\\pm45^\\circ') + ' だけ回し、届かないとき（面内の 2 つの主応力が同符号で、最大が ' + tx('\\sigma_1') + ' と面外の 0 の組で決まるとき）は、まず主軸へ回し、次に ' + tx("y'") + '（＝中間の主軸）まわりに 45° 傾けます。このとき最大せん断は ' + tx(cur.strain ? "\\varepsilon'_{xz}" : "\\sigma'_{xz}") + ' に現れ、面の法線は ' + tx('\\sigma_1') + ' の主軸と ' + tx('z') + ' 軸のちょうど中間を向きます。</p>';
   $('f-eig').innerHTML = h;
 }
 

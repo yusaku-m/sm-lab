@@ -249,14 +249,40 @@ export function principalQ(S) {
   return [0, 1, 2].map((i) => [a[i], b[i], c[i]]);
 }
 
-// 最大せん断応力 (σ1 − σ3)/2 の面に合わせた回転行列。x′ = (n1 + n3)/√2, y′ = (n1 − n3)/√2 で σ′x′y′ = (σ1 − σ3)/2（正）、
-// z′ = x′ × y′ は中間の主軸 n2（の ±）。σ′x′x′ = σ′y′y′ = (σ1 + σ3)/2
-export function maxShearQ(S) {
-  const { vecs } = eigSym(S);
-  const [n1, , n3] = vecs, r = Math.SQRT1_2;
-  const x = n1.map((v, i) => (v + n3[i]) * r), y = n1.map((v, i) => (v - n3[i]) * r);
-  const z = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
-  return [0, 1, 2].map((i) => [x[i], y[i], z[i]]);
+// 主軸の座標系（列 = n1, n2, n3）を、今の向き Q0 に最も近くなるよう n1・n2 の符号を選んで返す（n3 = n1 × n2）。
+// 主軸へ回すときに、符号の取り方で要素が 180° 回ってしまわないように
+export function principalQNear(S, Q0) {
+  const P = principalQ(S);
+  let best = P, bestTr = -Infinity;
+  for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+    const a = P.map((r) => r[0] * s1), b = P.map((r) => r[1] * s2);
+    const c = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const C = [0, 1, 2].map((i) => [a[i], b[i], c[i]]);
+    const t = [0, 1, 2].reduce((s, j) => s + Q0[0][j] * C[0][j] + Q0[1][j] * C[1][j] + Q0[2][j] * C[2][j], 0);
+    if (t > bestTr + 1e-12) { bestTr = t; best = C; }
+  }
+  return best;
+}
+
+// 最大せん断応力 (σ1 − σ3)/2 の面。主軸の座標系 P（列 n1, n2, n3）を中間の主軸 n2（= y′）まわりに 45° 回す:
+// x′ = (n1 − n3)/√2, y′ = n2, z′ = (n1 + n3)/√2 で σ′xz = (σ1 − σ3)/2（正）、σ′xx = σ′zz = (σ1 + σ3)/2、σ′yy = σ2
+export function maxShearQ(P) {
+  return mul(P, rotAxis('y', Math.PI / 4));
+}
+
+// 回転行列 R の回転軸と角度（0〜π）
+export function axisAngleOf(R) {
+  const c = Math.max(-1, Math.min(1, (R[0][0] + R[1][1] + R[2][2] - 1) / 2)), ang = Math.acos(c);
+  if (ang < 1e-9) return { axis: [0, 0, 1], ang: 0 };
+  if (Math.PI - ang > 1e-6) {
+    const s = 2 * Math.sin(ang);
+    return { axis: [(R[2][1] - R[1][2]) / s, (R[0][2] - R[2][0]) / s, (R[1][0] - R[0][1]) / s], ang };
+  }
+  // ほぼ 180°: 対角成分から軸を出し、非対角の符号でそろえる
+  const u = [0, 1, 2].map((i) => Math.sqrt(Math.max(0, (R[i][i] + 1) / 2)));
+  const k = u.indexOf(Math.max(...u));
+  for (let i = 0; i < 3; i++) if (i !== k && R[k][i] + R[i][k] < 0) u[i] = -u[i];
+  return { axis: u, ang };
 }
 
 export function invariants(S) {
