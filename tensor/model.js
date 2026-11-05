@@ -249,6 +249,16 @@ export function principalQ(S) {
   return [0, 1, 2].map((i) => [a[i], b[i], c[i]]);
 }
 
+// 最大せん断応力 (σ1 − σ3)/2 の面に合わせた回転行列。x′ = (n1 + n3)/√2, y′ = (n1 − n3)/√2 で σ′x′y′ = (σ1 − σ3)/2（正）、
+// z′ = x′ × y′ は中間の主軸 n2（の ±）。σ′x′x′ = σ′y′y′ = (σ1 + σ3)/2
+export function maxShearQ(S) {
+  const { vecs } = eigSym(S);
+  const [n1, , n3] = vecs, r = Math.SQRT1_2;
+  const x = n1.map((v, i) => (v + n3[i]) * r), y = n1.map((v, i) => (v - n3[i]) * r);
+  const z = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+  return [0, 1, 2].map((i) => [x[i], y[i], z[i]]);
+}
+
 export function invariants(S) {
   const I1 = S[0][0] + S[1][1] + S[2][2];
   const I2 = S[0][0] * S[1][1] + S[1][1] * S[2][2] + S[2][2] * S[0][0]

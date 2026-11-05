@@ -187,7 +187,8 @@ bindAngle('th', 'th-n', () => state.rot.th, (v) => { state.rot.th = v; });
 [0, 1, 2].forEach((i) => bindAngle(`eu${i}`, `eu${i}-n`, () => state.rot.eu[i], (v) => { state.rot.eu[i] = v; state.rot.sweep = i; }));
 
 $('reset-rot').addEventListener('click', () => { stopAnim(); state.rot.th = 0; state.rot.eu = [0, 0, 0]; render(); });
-$('to-principal').addEventListener('click', toPrincipal);
+$('to-principal').addEventListener('click', () => toPrincipal(false));
+$('to-shear').addEventListener('click', () => toPrincipal(true));
 $('play').addEventListener('click', () => {
   playing = !playing; tween = null;
   $('play').setAttribute('aria-pressed', playing);
@@ -229,8 +230,9 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-// 主軸へ回す。軸まわりの回転で済む（回転軸が主軸の 1 本）なら θ だけ動かす
-function toPrincipal() {
+// 主軸へ回す（shear = false）／最大せん断応力の面へ回す（shear = true。2026-11-05）。
+// 軸まわりの回転で済む（回転軸が主軸の 1 本で、最大せん断ならそれが中間の主軸）なら θ だけ動かす
+function toPrincipal(shear = false) {
   stopAnim();
   const { S, sym } = current();
   if (!sym) return;
@@ -238,12 +240,15 @@ function toPrincipal() {
   if (r.mode === 'axis') {
     // 今の軸、だめならほかの座標軸のまわりに回すだけで主軸に合うか（回転軸が主軸の 1 本か）
     const ref = Math.max(1e-12, ...S.flat().map(Math.abs));
+    const ev = Mdl.eigSym(S).vals, tmax = (ev[0] - ev[2]) / 2;
     const axes = [r.axis, ...Mdl.AX.filter((a) => a !== r.axis)];
     for (const ax of axes) {
       const [i, j, k] = Mdl.CYC[ax].map((a) => Mdl.AX.indexOf(a));
       if (Math.abs(S[i][k]) >= 1e-9 * ref || Math.abs(S[j][k]) >= 1e-9 * ref) continue;
+      // 最大せん断は、この面内の最大せん断が 3 次元の最大 (σ1 − σ3)/2 に等しい軸だけ（回転軸が中間の主軸）
+      if (shear && Math.hypot((S[i][i] - S[j][j]) / 2, S[i][j]) < tmax - 1e-9 * ref) continue;
       const from = ax === r.axis ? r.th : 0;
-      let tp = 0.5 * Math.atan2(2 * S[i][j], S[i][i] - S[j][j]) * 180 / Math.PI;
+      let tp = 0.5 * Math.atan2(2 * S[i][j], S[i][i] - S[j][j]) * 180 / Math.PI + (shear ? 45 : 0);
       // 今の角度から近い方（90° ずつ同値）へ
       while (tp - from > 45) tp -= 90;
       while (tp - from < -45) tp += 90;
@@ -255,7 +260,7 @@ function toPrincipal() {
     r.eu = Mdl.eulerFromQ(rotQ()).map((a) => a * 180 / Math.PI);
     r.mode = 'euler';
   }
-  const target = Mdl.eulerFromQ(Mdl.principalQ(S)).map((a) => a * 180 / Math.PI);
+  const target = Mdl.eulerFromQ(shear ? Mdl.maxShearQ(S) : Mdl.principalQ(S)).map((a) => a * 180 / Math.PI);
   const from = r.eu.slice();
   const to = target.map((a, n) => (n === 1 ? a : from[n] + wrap180(a - from[n])));
   tween = { kind: 'euler', from, to, t: 0, dur: 1.0 };
@@ -313,6 +318,9 @@ function syncInputs(opts = {}) {
   const canPrincipal = state.mode !== 'custom' || !bad.length;
   $('to-principal').disabled = !canPrincipal;
   $('to-principal').title = canPrincipal ? '' : '対称でない行列には主軸がありません';
+  $('to-shear').disabled = !canPrincipal;
+  $('to-shear').title = canPrincipal ? '' : '対称でない行列には主軸がありません';
+  $('to-shear').textContent = isE() ? '最大せん断ひずみの面へ回す' : '最大せん断応力の面へ回す';
 
   const r = state.rot;
   $('rmode').value = r.mode;
@@ -810,7 +818,7 @@ function renderFormulas(cur) {
     h += '<p>等方性の材料では、主ひずみの方向（主軸）は主応力の方向と一致します（フックの法則で、せん断応力が 0 ならせん断ひずみも 0）。</p>';
   }
   h += planeTex(S, cur.strain, unit, deg);
-  h += '<p>「主軸へ回す」を押すと、要素の軸を主軸に合わせ、せん断成分が 0 になるのを確かめられます。</p>';
+  h += '<p>「主軸へ回す」を押すと、要素の軸を主軸に合わせ、せん断成分が 0 になるのを確かめられます。「最大せん断' + (cur.strain ? 'ひずみ' : '応力') + 'の面へ回す」は、最大と最小の主軸の間（中間の主軸まわりに 45°）へ回し、' + tx(cur.strain ? "\\varepsilon'_{xy}=\\dfrac{\\varepsilon_1-\\varepsilon_3}{2}" : "\\sigma'_{xy}=\\dfrac{\\sigma_1-\\sigma_3}{2}") + '（垂直成分は ' + tx(cur.strain ? "\\dfrac{\\varepsilon_1+\\varepsilon_3}{2}" : "\\dfrac{\\sigma_1+\\sigma_3}{2}") + ' で等しい）になる面を見せます。面内の 2 つの主応力が同符号のときは、' + tx('z') + ' 軸を含む面へ回ります。</p>';
   $('f-eig').innerHTML = h;
 }
 
