@@ -1,0 +1,46 @@
+/* airy/ 単元だけの追加（土台は ../equilibrium/style.css） */
+
+.lab {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "fig   fig"
+    "ctrl  notes";
+}
+@media (max-width: 920px) {
+  .lab { grid-template-columns: minmax(0, 1fr); grid-template-areas: "fig" "ctrl" "notes"; }
+}
+
+.hint { color: var(--muted); font-size: 0.74rem; line-height: 1.6; margin: 6px 0 12px; }
+.h2-2 { margin-top: 18px; }
+
+.ctl-grid { display: grid; gap: 6px; margin: 4px 0 10px; max-width: 640px; }
+.ctl-grid .lf { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr) 3.6rem; align-items: center; }
+.ctl-grid input[type="range"] { width: 100%; accent-color: var(--accent); }
+.ctl-grid output { font-size: 0.78rem; text-align: right; font-variant-numeric: tabular-nums; }
+.ctl-grid .lf.off { opacity: 0.45; }
+
+/* 板：canvas（コンター）の上に SVG（輪郭・荷重・断面線）と KaTeX のラベルを重ねる */
+.plate-wrap { position: relative; width: 100%; aspect-ratio: 26 / 9; touch-action: none; cursor: ew-resize; user-select: none; }
+.plate-wrap canvas, .plate-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plate-wrap canvas { image-rendering: auto; }
+.plate-lbl { position: absolute; inset: 0; pointer-events: none; }
+.plate-lbl > span { position: absolute; font-size: 0.86rem; white-space: nowrap; transform: translate(-50%, -50%); }
+
+.cbar-row { display: grid; grid-template-columns: minmax(0, 320px); justify-content: end; margin-top: 6px; }
+.cbar-row canvas { width: 100%; height: 12px; border-radius: 3px; border: 1px solid var(--line-solid); }
+.cbar-ticks { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.plot text { font-family: var(--body-font); }
+
+/* 式 */
+.formula h3 { font-family: var(--display-font); font-weight: 400; font-size: 1.02rem; margin: 0 0 6px; }
+.formula p { font-size: 0.82rem; line-height: 1.7; margin: 6px 0; }
+.formula .eq { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.formula .eq .katex-display { margin: 6px 0; text-align: left; }
+.formula .eq .katex-display > .katex { text-align: left; }
+.formula .step { font-size: 0.74rem; color: var(--accent-strong); font-weight: 700; letter-spacing: 0.06em; margin-top: 12px; }
+.formula .note { font-size: 0.76rem; color: var(--muted); border-left: 3px solid var(--line-solid); padding-left: 10px; }
+.formula table { border-collapse: collapse; font-size: 0.78rem; font-variant-numeric: tabular-nums; margin: 6px 0; }
+.formula td, .formula th { padding: 3px 10px; border-bottom: 1px solid var(--line-solid); text-align: right; }
+.formula th { color: var(--muted); font-weight: 400; }

@@ -214,6 +214,36 @@ function tensor(t) {
   return s;
 }
 
+// ---------- エアリーの応力関数：端面の荷重に余弦波を 1 つずつ重ねる（N = 1〜14）と集中荷重に近づくが、奥の断面の分布はすぐ平らになる ----------
+function airy(t) {
+  const N = 1 + Math.floor((t * 1.6) % 14), x0 = 96, x1 = 300, y0 = 48, b = 104;
+  const sig = (xi, eta) => {
+    let v = 1;
+    for (let n = 1; n <= N; n++) { const a = 2 * Math.PI * n * xi; v += 2 * (1 + a) * Math.exp(-a) * Math.cos(2 * Math.PI * n * eta); }
+    return v;
+  };
+  let s = `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${b}" fill="${C.paper}" stroke="${C.ink}" stroke-width="1.8"/>`;
+  // 端面の荷重
+  const q = [];
+  for (let j = 0; j <= 80; j++) { const eta = -0.5 + j / 80; let v = 1; for (let n = 1; n <= N; n++) v += 2 * Math.cos(2 * Math.PI * n * eta); q.push([eta, v]); }
+  const k = Math.min(14, 80 / (1 + 2 * N));
+  const pts = q.map(([e, v]) => `${f(x0 - v * k)},${f(y0 + (e + 0.5) * b)}`).join(' ');
+  s += `<polygon points="${x0},${y0} ${pts} ${x0},${y0 + b}" fill="${C.accent}" fill-opacity="0.16"/>` +
+    `<polyline points="${pts}" fill="none" stroke="${C.accentStrong}" stroke-width="1.6"/>`;
+  // 断面 x = 0.04b, 0.15b, 0.5b, 1.2b の σxx（基準線からのずれを横に描く）
+  for (const xi of [0.04, 0.15, 0.5, 1.2]) {
+    const X = x0 + 12 + xi * 150;
+    const p = [];
+    for (let j = 0; j <= 50; j++) { const eta = -0.5 + j / 50; p.push(`${f(X + Math.max(-14, Math.min(30, (sig(xi, eta) - 1) * 9)))},${f(y0 + (eta + 0.5) * b)}`); }
+    s += `<line x1="${f(X)}" y1="${y0}" x2="${f(X)}" y2="${y0 + b}" stroke="${C.faint}" stroke-dasharray="2 3"/>` +
+      `<polyline points="${p.join(' ')}" fill="none" stroke="${C.purple}" stroke-width="1.6"/>`;
+  }
+  s += sym(x0 - 40, y0 + b + 26, 'N', { c: C.ink, size: 14 }) +
+    `<text x="${x0 - 30}" y="${y0 + b + 26}" font-size="13" fill="${C.ink}">= ${N}</text>` +
+    sym(x1 - 6, y0 - 10, 'σ', { c: C.purple, size: 14, sub: 'xx', anchor: 'end' });
+  return s;
+}
+
 // ---------- 準備中の単元（静止画） ----------
 function axial() {
   let s = wall(40, 64, 136) + `<rect x="40" y="90" width="222" height="20" fill="none" stroke="${C.ink}" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.5"/>` +
@@ -238,7 +268,7 @@ function torsion() {
   return s;
 }
 
-const DRAW = { equilibrium, beam, sfdbmd, mohr, tensor, axial, torsion };
+const DRAW = { equilibrium, beam, sfdbmd, mohr, tensor, airy, axial, torsion };
 const STATIC = new Set(['axial', 'torsion']);
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>エアリーの応力関数 — サンブナンの原理</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<!-- 見た目は「力とモーメントのつり合い」と同じテーマ。この単元だけの追加は style.css に -->
+<link rel="stylesheet" href="../equilibrium/style.css">
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+</head>
+<body>
+
+<header class="site-head">
+  <a class="home-link" href="../index.html">← sm-lab トップへ</a>
+  <h1>エアリーの応力関数</h1>
+  <p class="lede">幅 <span class="tex" data-tex="b"></span> の板の端面に、合力 <span class="tex" data-tex="P"></span> の引張荷重を与えます。端面の荷重を正弦波（余弦波）の重ね合わせで表し、各波を応力関数で解いて足し合わせます。波を増やすと端面の荷重は集中荷重に近づきますが、波長の短い波ほど端面から離れると速く消えるので、奥の応力は一様な <span class="tex" data-tex="P/b"></span> のままです（サンブナンの原理）。弾性力学テキストの 1.1 に対応しています。</p>
+</header>
+
+<main class="lab">
+
+  <!-- ------------------------------------------------ 板と応力分布 -->
+  <section class="card fig-card">
+    <p class="kicker">Saint-Venant's principle</p>
+    <h2>端面に荷重を受ける板の応力分布</h2>
+    <div class="toolbar">
+      <label class="seg-label" for="ld">端面の荷重</label>
+      <select id="ld"></select>
+      <label class="seg-label" for="comp">表示</label>
+      <select id="comp">
+        <option value="0">σxx（軸方向）</option>
+        <option value="1">σyy（幅方向）</option>
+        <option value="2">σxy（せん断）</option>
+      </select>
+      <button class="btn btn-accent play" id="play" type="button" aria-pressed="false"><span class="icon" aria-hidden="true">▶</span><span class="lbl">波を重ねる</span></button>
+    </div>
+    <div class="ctl-grid">
+      <label class="lf"><span class="tex" data-tex="N"></span>
+        <input id="N" type="range" min="0" max="80" step="1"><output id="N-o"></output></label>
+      <label class="lf" id="a-row"><span class="tex" data-tex="a/b"></span>
+        <input id="a" type="range" min="0.05" max="0.95" step="0.05"><output id="a-o"></output></label>
+    </div>
+    <div class="toolbar toolbar-tight">
+      <label class="check"><input type="checkbox" id="inf">無限項（<span class="tex" data-tex="N\to\infty"></span>、厳密な和）</label>
+      <label class="check"><input type="checkbox" id="lz">ランチョスの因子でギブスの振動を抑える</label>
+    </div>
+
+    <div class="plate-wrap" id="plate-wrap">
+      <canvas id="plate-cv"></canvas>
+      <svg id="plate-svg" aria-label="板の応力分布"></svg>
+      <div class="plate-lbl" id="plate-lbl"></div>
+    </div>
+    <div class="cbar-row">
+      <canvas id="cbar" width="300" height="12"></canvas>
+      <div class="cbar-ticks" id="cbar-ticks"></div>
+    </div>
+    <p class="hint" id="plate-hint">左端が荷重を受ける端面（左の曲線が、<span class="tex" data-tex="N"></span> 項で打ち切った荷重の分布）。色は応力を <span class="tex" data-tex="P/b"></span> で割った値です。黒い破線から右は、一様な状態からのずれが <span class="tex" data-tex="P/b"></span> の 5% 以内。図の上をドラッグすると、断面 <span class="tex" data-tex="x"></span> が動きます。</p>
+  </section>
+
+  <!-- ------------------------------------------------ 断面の分布と減衰 -->
+  <section class="card controls-card">
+    <p class="kicker">Section</p>
+    <h2 id="sec-title">断面の応力分布</h2>
+    <div class="ctl-grid">
+      <label class="lf"><span class="tex" data-tex="x/b"></span>
+        <input id="xc" type="range" min="0.01" max="2" step="0.01"><output id="xc-o"></output></label>
+    </div>
+    <div class="figure plot" id="sec-plot"></div>
+    <p class="sub" id="sec-sub"></p>
+    <h2 class="h2-2">端面から離れるとどれだけ一様になるか</h2>
+    <div class="figure plot" id="dec-plot"></div>
+    <p class="hint">縦軸は対数。断面のなかで一様な状態（<span class="tex" data-tex="\sigma_{xx}=P/b,\ \sigma_{yy}=\sigma_{xy}=0"></span>）から最もずれた量。細い線は各波（第 <span class="tex" data-tex="n"></span> 項）の大きさ <span class="tex" data-tex="|q_n|(1+\alpha_n x)e^{-\alpha_n x}"></span> で、波長の短い（<span class="tex" data-tex="n"></span> の大きい）波ほど速く消えます。</p>
+  </section>
+
+  <!-- ------------------------------------------------ 式 -->
+  <section class="card notes-card">
+    <p class="kicker">Formulas</p>
+    <h2>応力関数による解き方</h2>
+    <div class="formula" id="f-main"></div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="share-row">
+    <input id="share-url" type="text" readonly aria-label="この設定のURL">
+    <button class="btn" id="share-copy" type="button">URL をコピー</button>
+  </div>
+</footer>
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
