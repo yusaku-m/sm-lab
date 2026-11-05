@@ -86,15 +86,16 @@ const VW = 1040, VH = 360, S = 280, X0 = 230, Y0 = 40; // 板の左上 (X0, Y0)�
 const X1 = X0 + XI_MAX * S, Y1 = Y0 + S;
 const px = (xi) => X0 + xi * S, py = (eta) => Y0 + (eta + 0.5) * S; // y は下向き（テキストと同じ）
 
-// 色：応力 0 を白、板の中の最大（|値| の 99 パーセンタイル）を赤。負の値は同じ目盛りで青。
-// 集中荷重は荷重点で応力が無限大になるので、真の最大ではなく 99 パーセンタイルで飽和させる。
+// 色：応力 0 を白、CMAX を赤。負の値は同じ目盛りで青。目盛りは成分ごとに固定（荷重の種類・項数 N で変えない。
+// 変えると、波を重ねて荷重点の山が高くなるほど一様な部分が淡くなり、応力が下がったように見える）。
+// σxx は一様な値 P/b が半分の濃さになる 2P/b。集中荷重は荷重点で無限大になるので、そこは赤で飽和する。
 const C_NEG = [36, 91, 141], C_MID = [255, 255, 255], C_POS = [200, 30, 30];
 function color(v) {
   const t = Math.max(-1, Math.min(1, v)), a = Math.abs(t), c = t >= 0 ? C_POS : C_NEG;
   return [C_MID[0] + (c[0] - C_MID[0]) * a, C_MID[1] + (c[1] - C_MID[1]) * a, C_MID[2] + (c[2] - C_MID[2]) * a];
 }
 const refOf = (comp) => (comp === 0 ? 1 : 0); // 断面の分布の基準線（一様な値）
-let cmax = 1, cneg = false; // コンターの目盛り（drawContour が決める）
+const CMAX = [2, 1, 1]; // σxx・σyy・σxy の赤になる値（P/b を単位に）
 
 const NX = 300, NY = 120;
 const off = document.createElement('canvas'); off.width = NX; off.height = NY;
@@ -109,11 +110,7 @@ function drawContour(f) {
       vals[j * NX + i] = Number.isFinite(v) ? v : 0;
     }
   }
-  const mags = Float64Array.from(vals, Math.abs).sort();
-  cmax = mags[Math.floor(0.99 * (mags.length - 1))] || 1;
-  let mn = 0;
-  for (const v of vals) if (v < mn) mn = v;
-  cneg = mn < -0.01 * cmax;
+  const cmax = CMAX[state.comp];
   for (let k = 0; k < vals.length; k++) {
     const [r, g, b] = color(vals[k] / cmax);
     img.data[4 * k] = r; img.data[4 * k + 1] = g; img.data[4 * k + 2] = b; img.data[4 * k + 3] = 255;
@@ -129,17 +126,15 @@ function drawContour(f) {
   g.drawImage(off, ox + X0 * k, oy + Y0 * k, (X1 - X0) * k, (Y1 - Y0) * k);
 }
 
-// 目盛り：負の値が無ければ 0（白）→ 最大（赤）、あれば −最大（青）→ 0 → 最大（赤）
 function drawColorbar() {
-  const cv = $('cbar'), g = cv.getContext('2d'), lo = cneg ? -1 : 0;
+  const cv = $('cbar'), g = cv.getContext('2d'), cmax = CMAX[state.comp];
   for (let i = 0; i < cv.width; i++) {
-    const [r, gg, b] = color(lo + ((1 - lo) * i) / (cv.width - 1));
+    const [r, gg, b] = color(-1 + (2 * i) / (cv.width - 1));
     g.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`; g.fillRect(i, 0, 1, cv.height);
   }
-  const u = tx('P/b'), d = cmax < 10 ? 2 : 1;
-  const ticks = cneg ? [-1, -0.5, 0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
-  $('cbar-ticks').innerHTML = ticks
-    .map((t, i) => `<span>${cneg && i === 0 ? '≤ ' : i === ticks.length - 1 ? '≥ ' : ''}${fmt(t * cmax, d)}${t === 0 ? ' ' + u : ''}</span>`).join('');
+  const u = tx('P/b');
+  $('cbar-ticks').innerHTML = [-1, -0.5, 0, 0.5, 1]
+    .map((t, i) => `<span>${i === 0 ? '≤ ' : i === 4 ? '≥ ' : ''}${fmt(t * cmax, 1)}${t === 0 ? ' ' + u : ''}</span>`).join('');
 }
 
 const arrowSvg = (x1, y1, x2, y2, c, w = 2, head = 9) => {
