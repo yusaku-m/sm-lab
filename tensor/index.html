@@ -62,6 +62,7 @@
       <p class="sub" id="cust-sub">成分を直接入力します（単位 MPa）。応力テンソルは対称行列になるはずなので、対称でないときは注意を出します。</p>
       <div class="cust-grid" id="cust"></div>
       <label class="check"><input type="checkbox" id="cust-sym" checked>対称に保つ（右上を入力すると左下も変わる）</label>
+      <label class="check" id="cust-ps-row" hidden><input type="checkbox" id="cust-ps">平面応力（σ<sub>zz</sub> = σ<sub>yz</sub> = σ<sub>zx</sub> = 0。ε<sub>zz</sub> は面内のひずみから自動で決まる）</label>
       <div class="err warn-box" id="cust-warn" hidden></div>
     </div>
   </section>

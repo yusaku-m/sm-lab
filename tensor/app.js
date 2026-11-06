@@ -30,6 +30,7 @@ const defaultState = () => ({
   pt: { xi: 0.5, eta: 1, zeta: 0 },
   custom: zeroCustom(),
   customSym: true,
+  ps: false, // ひずみの直接入力で平面応力（σzz=σyz=σzx=0。εzz は自動で決まる）。弾性力学 演習2.1.5〜2.1.7
   rot: { mode: 'axis', axis: 'z', th: 0, eu: [0, 0, 0], sweep: 0 },
 });
 const state = defaultState();
@@ -67,8 +68,9 @@ function current() {
   const scale = (A, k) => A.map((r) => r.map((v) => v * k));
   let terms, bases, Ssig, Seps, eterms = null, ebases = null;
   if (state.mode === 'custom') {
-    bases = Mdl.customBases(state.custom, strain ? '\\varepsilon' : '\\sigma');
-    terms = Mdl.customTerms(state.custom);
+    const c = planeStressCustom(strain, nu);
+    bases = Mdl.customBases(c, strain ? '\\varepsilon' : '\\sigma');
+    terms = Mdl.customTerms(c);
     const M = Mdl.toMatrix(terms, bases);
     if (strain) { Seps = M; Ssig = Mdl.invHooke(scale(M, 1e-6), E, nu); }
     else { Ssig = M; Seps = scale(Mdl.hooke(M, E, nu), 1e6); }
@@ -83,6 +85,16 @@ function current() {
   const Sp = Mdl.rotateTensor(S, Qm);
   const sym = Mdl.isSymmetric(S);
   return { terms, bases, eterms, ebases, S, Ssig, Seps, Q: Qm, Sp, sym, strain, E, nu };
+}
+
+// 平面応力（ひずみの直接入力のときだけ）: 面内の εxx, εyy, εxy から εzz = −ν/(1−ν)(εxx+εyy)、εyz = εzx = 0
+const psOn = () => state.ps && state.tn === 'e' && state.mode === 'custom';
+function planeStressCustom(strain, nu) {
+  if (!(strain && state.ps)) return state.custom;
+  const c = { ...state.custom };
+  c.zz = -nu / (1 - nu) * (c.xx + c.yy);
+  for (const k of ['xz', 'zx', 'yz', 'zy']) c[k] = 0;
+  return c;
 }
 
 // ひずみモードでは記号 σ → ε・語を置き換える（TeX は描画の前に置き換える）
@@ -156,6 +168,7 @@ for (const c of Mdl.COMP) {
   $('cust').appendChild(inp);
   custInputs[c] = inp;
 }
+$('cust-ps').addEventListener('change', (e) => { state.ps = e.target.checked; userEdit(); });
 $('cust-sym').addEventListener('change', (e) => {
   state.customSym = e.target.checked;
   if (state.customSym) { // 右上に合わせる
@@ -317,11 +330,15 @@ function syncInputs(opts = {}) {
 
   for (const c of Mdl.COMP) {
     if (document.activeElement !== custInputs[c]) custInputs[c].value = state.custom[c];
-    custInputs[c].disabled = state.customSym && ['yx', 'zx', 'zy'].includes(c);
+    const psFixed = psOn() && ['zz', 'xz', 'zx', 'yz', 'zy'].includes(c);
+    custInputs[c].disabled = (state.customSym && ['yx', 'zx', 'zy'].includes(c)) || psFixed;
+    if (psFixed) custInputs[c].value = +planeStressCustom(true, state.mat.nu)[c].toFixed(4);
     custInputs[c].title = `${isE() ? 'ε' : 'σ'}_${c}`;
     custInputs[c].setAttribute('aria-label', `${isE() ? 'ε' : 'σ'}${c}`);
   }
   $('cust-sym').checked = state.customSym;
+  $('cust-ps-row').hidden = !isE();
+  $('cust-ps').checked = state.ps;
   // 対称でない組を入力欄のそばで知らせる（式の欄の判定だけだと下まで読まないと気づかない）
   const bad = [['xy', 'yx'], ['yz', 'zy'], ['zx', 'xz']].filter(([a, b]) => {
     const m = Math.max(1, ...Mdl.COMP.map((c) => Math.abs(state.custom[c])));
@@ -716,11 +733,22 @@ function renderFormulas(cur) {
     } else {
       const E = cur.E, nu = cur.nu, ekk = S[0][0] + S[1][1] + S[2][2];
       h += '<p class="ok">対称行列（ε<sub>ij</sub> = ε<sub>ji</sub>）なので、ひずみテンソルになり得ます。せん断ひずみ（角度の変化）は γ<sub>ij</sub> = 2ε<sub>ij</sub> です。</p>';
-      h += `<div class="step">STEP 1　フックの法則で応力へ（${matE()}）</div>`;
+      if (psOn()) {
+        const k = E / (1 - nu * nu);
+        h += `<div class="step">STEP 1　平面応力（${tx('\\sigma_{zz}=\\sigma_{yz}=\\sigma_{zx}=0')}）：面内のひずみから応力へ（${matE()}）</div>`;
+        h += '<p>板の表面で測れるのは面内の ε<sub>xx</sub>, ε<sub>yy</sub>, ε<sub>xy</sub> だけです。ε<sub>zz</sub> は与えず、σ<sub>zz</sub> = 0 の条件から決まります（板厚の変化）。</p>';
+        h += eq(`\\varepsilon_{zz}=-\\frac{\\nu}{1-\\nu}(\\varepsilon_{xx}+\\varepsilon_{yy})=${Mdl.fmt(S[2][2], 4)}\\times10^{-6}`);
+        h += eq(`\\sigma_{xx}=\\frac{E}{1-\\nu^2}(\\varepsilon_{xx}+\\nu\\varepsilon_{yy})=${Mdl.fmt(cur.Ssig[0][0], 4)}\\ \\mathrm{MPa}`);
+        h += eq(`\\sigma_{yy}=\\frac{E}{1-\\nu^2}(\\varepsilon_{yy}+\\nu\\varepsilon_{xx})=${Mdl.fmt(cur.Ssig[1][1], 4)}\\ \\mathrm{MPa}`);
+        h += eq(`\\sigma_{xy}=2G\\varepsilon_{xy}=G\\gamma_{xy}=${Mdl.fmt(cur.Ssig[0][1], 4)}\\ \\mathrm{MPa}`);
+        h += `<p>ここで ${tx(`\\frac{E}{1-\\nu^2}=${Mdl.fmt(k / 1e5, 4)}\\times10^{5}\\ \\mathrm{MPa}`)}、${tx(`G=\\frac{E}{2(1+\\nu)}=${Mdl.fmt(E / (2 * (1 + nu)) / 1e4, 4)}\\times10^{4}\\ \\mathrm{MPa}`)}。</p>`;
+        h += '<p>確認として、3 次元のフックの法則（下の STEP 2）に ε<sub>zz</sub> を入れて計算しても σ<sub>zz</sub> = 0 になります。ε<sub>zz</sub> = 0 と置くと（平面ひずみ）、σ<sub>zz</sub> ≠ 0 になり面内の応力も変わります。</p>';
+      }
+      h += `<div class="step">${psOn() ? 'STEP 2　（確認）3 次元のフックの法則' : 'STEP 1　フックの法則で応力へ'}（${matE()}）</div>`;
       h += eq('\\sigma_{ij}=\\frac{E}{1+\\nu}\\left(\\varepsilon_{ij}+\\frac{\\nu}{1-2\\nu}\\varepsilon_{kk}\\delta_{ij}\\right)');
       h += eq(`\\varepsilon_{kk}=${Mdl.fmt(ekk, 4)}\\times10^{-6},\\quad \\frac{E}{1+\\nu}=${Mdl.fmt(E / (1 + nu), 4)}\\ \\mathrm{MPa},\\quad \\frac{\\nu}{1-2\\nu}=${Mdl.fmt(nu / (1 - 2 * nu), 4)}`);
       h += eq(`\\bm\\sigma=${numMat(cur.Ssig)}\\ \\mathrm{MPa}`);
-      const free = [0, 1, 2].filter((i) => Math.abs(S[i][i]) < 1e-9 && Math.abs(cur.Ssig[i][i]) > 1e-6);
+      const free = psOn() ? [] : [0, 1, 2].filter((i) => Math.abs(S[i][i]) < 1e-9 && Math.abs(cur.Ssig[i][i]) > 1e-6);
       for (const i of free) {
         const a = Mdl.AX[i], [b, c] = Mdl.AX.filter((x) => x !== a);
         h += `<p>${tx(`\\varepsilon_{${a}${a}}=0`)} でも ${tx(`\\sigma_{${a}${a}}\\ne0`)}：${b}, ${c} 方向の応力によるポアソン効果で ${a} 方向に伸び縮みしようとするのを拘束しているので、拘束する応力 ${tx(`\\sigma_{${a}${a}}=\\nu(\\sigma_{${b}${b}}+\\sigma_{${c}${c}})`)} が要ります（平面ひずみ状態）。</p>`;
@@ -883,6 +911,7 @@ function buildHash() {
     p.set('m', 'c');
     p.set('c', Mdl.COMP.map((c) => +state.custom[c].toFixed(4)).join(','));
     if (!state.customSym) p.set('cs', '0');
+    if (state.ps && state.tn === 'e') p.set('ps', '1');
   } else {
     const ld = Mdl.LOAD_KEYS.filter((k) => state.loads[k].on).map((k) => `${k}${state.loads[k].s < 0 ? '-' : ''}${state.loads[k].mag}`);
     if (ld.length) p.set('ld', ld.join(','));
@@ -909,6 +938,7 @@ function applyHash(h) {
     const v = (p.get('c') || '').split(',').map(Number);
     Mdl.COMP.forEach((c, i) => { state.custom[c] = Number.isFinite(v[i]) ? v[i] : 0; });
     state.customSym = p.get('cs') !== '0';
+    state.ps = p.get('ps') === '1';
   } else if (p.has('ld') || p.has('pt')) {
     for (const k of Mdl.LOAD_KEYS) state.loads[k] = { on: false, mag: DEF_MAG[k], s: 1 };
     for (const tok of (p.get('ld') || '').split(',')) {
