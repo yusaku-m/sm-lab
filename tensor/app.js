@@ -31,6 +31,7 @@ const defaultState = () => ({
   custom: zeroCustom(),
   customSym: true,
   ps: false, // ひずみの直接入力で平面応力（σzz=σyz=σzx=0。εzz は自動で決まる）。弾性力学 演習2.1.5〜2.1.7
+  pe: false, // 応力の直接入力で平面ひずみ（εzz=εyz=εzx=0。σzz=ν(σxx+σyy) は自動で決まる）。弾性力学 演習2.2
   rot: { mode: 'axis', axis: 'z', th: 0, eu: [0, 0, 0], sweep: 0 },
 });
 const state = defaultState();
@@ -88,11 +89,14 @@ function current() {
 }
 
 // 平面応力（ひずみの直接入力のときだけ）: 面内の εxx, εyy, εxy から εzz = −ν/(1−ν)(εxx+εyy)、εyz = εzx = 0
+// 平面ひずみ（応力の直接入力のときだけ）: 面内の σxx, σyy, σxy から σzz = ν(σxx+σyy)、σyz = σzx = 0（このとき εzz = 0）
 const psOn = () => state.ps && state.tn === 'e' && state.mode === 'custom';
+const peOn = () => state.pe && state.tn === 's' && state.mode === 'custom';
 function planeStressCustom(strain, nu) {
-  if (!(strain && state.ps)) return state.custom;
+  const ps = strain && state.ps, pe = !strain && state.pe;
+  if (!ps && !pe) return state.custom;
   const c = { ...state.custom };
-  c.zz = -nu / (1 - nu) * (c.xx + c.yy);
+  c.zz = ps ? -nu / (1 - nu) * (c.xx + c.yy) : nu * (c.xx + c.yy);
   for (const k of ['xz', 'zx', 'yz', 'zy']) c[k] = 0;
   return c;
 }
@@ -169,6 +173,7 @@ for (const c of Mdl.COMP) {
   custInputs[c] = inp;
 }
 $('cust-ps').addEventListener('change', (e) => { state.ps = e.target.checked; userEdit(); });
+$('cust-pe').addEventListener('change', (e) => { state.pe = e.target.checked; userEdit(); });
 $('cust-sym').addEventListener('change', (e) => {
   state.customSym = e.target.checked;
   if (state.customSym) { // 右上に合わせる
@@ -310,7 +315,7 @@ function syncInputs(opts = {}) {
   for (const el of document.querySelectorAll('[data-mode]')) el.hidden = el.dataset.mode !== state.mode;
   $('rod-title').textContent = state.mode === 'custom' ? `${tname}（直接入力）` : '丸棒と荷重';
   $('tn').value = state.tn;
-  $('mat-row').hidden = !isE();
+  $('mat-row').hidden = !isE() && !peOn();
   if (!opts.keepInputs) { $('E').value = state.mat.E; $('nu').value = state.mat.nu; }
   $('G-o').innerHTML = tx(`G=\\frac{E}{2(1+\\nu)}=${Mdl.fmt(state.mat.E / (2 * (1 + state.mat.nu)), 4)}\\ \\mathrm{GPa}`);
   $('cust-sub').textContent = isE()
@@ -330,15 +335,17 @@ function syncInputs(opts = {}) {
 
   for (const c of Mdl.COMP) {
     if (document.activeElement !== custInputs[c]) custInputs[c].value = state.custom[c];
-    const psFixed = psOn() && ['zz', 'xz', 'zx', 'yz', 'zy'].includes(c);
+    const psFixed = (psOn() || peOn()) && ['zz', 'xz', 'zx', 'yz', 'zy'].includes(c);
     custInputs[c].disabled = (state.customSym && ['yx', 'zx', 'zy'].includes(c)) || psFixed;
-    if (psFixed) custInputs[c].value = +planeStressCustom(true, state.mat.nu)[c].toFixed(4);
+    if (psFixed) custInputs[c].value = +planeStressCustom(isE(), state.mat.nu)[c].toFixed(4);
     custInputs[c].title = `${isE() ? 'ε' : 'σ'}_${c}`;
     custInputs[c].setAttribute('aria-label', `${isE() ? 'ε' : 'σ'}${c}`);
   }
   $('cust-sym').checked = state.customSym;
   $('cust-ps-row').hidden = !isE();
   $('cust-ps').checked = state.ps;
+  $('cust-pe-row').hidden = isE();
+  $('cust-pe').checked = state.pe;
   // 対称でない組を入力欄のそばで知らせる（式の欄の判定だけだと下まで読まないと気づかない）
   const bad = [['xy', 'yx'], ['yz', 'zy'], ['zx', 'xz']].filter(([a, b]) => {
     const m = Math.max(1, ...Mdl.COMP.map((c) => Math.abs(state.custom[c])));
@@ -721,7 +728,20 @@ function renderFormulas(cur) {
       h += `<p>せん断ひずみ（角度の変化）は ${tx('\\gamma_{ij}=2\\varepsilon_{ij}')}。体積ひずみは ${tx(`\\varepsilon_{kk}=\\frac{1-2\\nu}{E}\\sigma_{kk}=${Mdl.fmt(S[0][0] + S[1][1] + S[2][2], 4)}\\times 10^{-6}`)}。</p>`;
     }
   } else if (!cur.strain) {
-    h += eq(`\\bm\\sigma=${numMat(S)}\\ \\mathrm{MPa}`);
+    if (peOn()) {
+      const E = cur.E, nu = cur.nu, skk = S[0][0] + S[1][1] + S[2][2];
+      h += `<div class="step">STEP 1　平面ひずみ（${tx('\\varepsilon_{zz}=\\varepsilon_{yz}=\\varepsilon_{zx}=0')}）：${tx('\\sigma_{zz}')} を決める（${matE()}）</div>`;
+      h += '<p>z 方向に長く伸縮できない物体では、面内の応力によるポアソン効果で z 方向に伸び縮みしようとするのを拘束する σ<sub>zz</sub> が生じます。3 次元のフックの法則の zz 成分を ε<sub>zz</sub> = 0 とおくと、</p>';
+      h += eq(`\\varepsilon_{zz}=\\frac{1+\\nu}{E}\\sigma_{zz}-\\frac{\\nu}{E}\\sigma_{kk}=0\\quad\\Longrightarrow\\quad \\sigma_{zz}=\\nu(\\sigma_{xx}+\\sigma_{yy})=${Mdl.fmt(S[2][2], 4)}\\ \\mathrm{MPa}`);
+      h += eq(`\\bm\\sigma=${numMat(S)}\\ \\mathrm{MPa}`);
+      h += `<div class="step">STEP 2　フックの法則でひずみへ（${matE()}）</div>`;
+      h += eq('\\varepsilon_{ij}=\\frac{1+\\nu}{E}\\sigma_{ij}-\\frac{\\nu}{E}\\sigma_{kk}\\delta_{ij}');
+      h += eq(`\\sigma_{kk}=${Mdl.fmt(skk, 4)}\\ \\mathrm{MPa},\\quad \\frac{\\nu}{E}\\sigma_{kk}=${Mdl.fmt(nu / E * skk * 1e6, 4)}\\times10^{-6}`);
+      h += eq(`\\bm\\varepsilon=${numMat(cur.Seps)}\\times 10^{-6}`);
+      h += '<p>ε<sub>zz</sub> = 0 になることを確かめられます。z 方向も主軸の 1 つで、主ひずみの 1 つは 0、主応力の 1 つは σ<sub>zz</sub> です（3 つを大きい順に並べて番号を付けます）。「テンソル」をひずみ ε に切り替えて ε<sub>zz</sub> = 0 のひずみテンソルを入力すると、ひずみから応力を求める向き（演習1.4.5 の形）になります。</p>';
+    } else {
+      h += eq(`\\bm\\sigma=${numMat(S)}\\ \\mathrm{MPa}`);
+    }
     h += sym
       ? '<p class="ok">対称行列（σ<sub>ij</sub> = σ<sub>ji</sub>）なので、応力テンソルになり得ます。対角成分の負の値は圧縮を表すだけです。</p>'
       : '<p class="ng">対称でありません。微小直方体のモーメントのつり合いから σ<sub>xy</sub> = σ<sub>yx</sub>, σ<sub>yz</sub> = σ<sub>zy</sub>, σ<sub>zx</sub> = σ<sub>xz</sub> が必要なので、応力テンソルにはなり得ません。</p>';
@@ -902,8 +922,8 @@ function planeTex(S, strain, unit, deg) {
 // ---------------------------------------------------------------- URL ハッシュ
 function buildHash() {
   const p = new URLSearchParams();
-  if (state.tn === 'e') {
-    p.set('tn', 'e');
+  if (state.tn === 'e' || (state.pe && state.mode === 'custom')) {
+    if (state.tn === 'e') p.set('tn', 'e');
     if (state.mat.E !== 206) p.set('E', state.mat.E);
     if (state.mat.nu !== 0.3) p.set('nu', state.mat.nu);
   }
@@ -912,6 +932,7 @@ function buildHash() {
     p.set('c', Mdl.COMP.map((c) => +state.custom[c].toFixed(4)).join(','));
     if (!state.customSym) p.set('cs', '0');
     if (state.ps && state.tn === 'e') p.set('ps', '1');
+    if (state.pe && state.tn === 's') p.set('pe', '1');
   } else {
     const ld = Mdl.LOAD_KEYS.filter((k) => state.loads[k].on).map((k) => `${k}${state.loads[k].s < 0 ? '-' : ''}${state.loads[k].mag}`);
     if (ld.length) p.set('ld', ld.join(','));
@@ -939,6 +960,7 @@ function applyHash(h) {
     Mdl.COMP.forEach((c, i) => { state.custom[c] = Number.isFinite(v[i]) ? v[i] : 0; });
     state.customSym = p.get('cs') !== '0';
     state.ps = p.get('ps') === '1';
+    state.pe = p.get('pe') === '1';
   } else if (p.has('ld') || p.has('pt')) {
     for (const k of Mdl.LOAD_KEYS) state.loads[k] = { on: false, mag: DEF_MAG[k], s: 1 };
     for (const tok of (p.get('ld') || '').split(',')) {
